@@ -1,10 +1,23 @@
 # QoL Enhancements for Peanuts
 
-![banner](docs/img/banner.png)
+![banner](docs/img/banner-v2.png)
 
 A port of Arcusaren's [Quality of Life Enhancements](https://gamebanana.com/mods/727637) (v1.1.0, ACNH 3.0.3) so it runs on Peanuts Native on Android.
 
 The normal Switch version doesn't work on Peanuts. It patches the game while it's running, and Peanuts doesn't let plugins do that. This version does the patching ahead of time instead. You don't need a PC or a game dump to install it: there's a [patcher page](https://catmona.github.io/acnh-qol-peanuts/) that builds the mod zip right in your browser.
+
+## Features
+
+All of this is Arcusaren's work, I just got it running on Peanuts. If something doesn't work, please open an issue!
+
+<img src="docs/img/features/controls.png" alt="Controls: hold Y to skip dialogue up to the next choice, hold Y to keep picking up items, crops and weeds, vault rivers, climb cliffs and swim without extra button presses" width="100%">
+<img src="docs/img/features/pockets.png" alt="Pockets: grab 5 or grab 10 from a stack, ZL to drop, ZR to use, hold A to select a bunch of items when selling, Y sends items to your home storage" width="100%">
+<img src="docs/img/features/crafting.png" alt="Crafting: faster crafting and cooking, Y jumps straight to the quantity and 10 wraps back to 1, 3D previews in the DIY app" width="100%">
+<img src="docs/img/features/faster-dialogue.png" alt="Faster Dialogue: text runs faster, optional extra boost for shopkeepers" width="100%">
+<img src="docs/img/features/catalog.png" alt="Catalog: a star on anything you haven't collected yet, also in Nook Shopping and the other catalogs" width="100%">
+<img src="docs/img/features/shopping-card.png" alt="Shopping Card: pay at Nook's Cranny and Able Sisters with your savings, works for storage upgrades too" width="100%">
+<img src="docs/img/features/fitting-room.png" alt="Fitting Room: buy several pieces of clothing at once, X uses a tailor ticket, B skips the wear-them-out question" width="100%">
+<img src="docs/img/features/core.png" alt="Core: the other modules need it, and the amiibo scanner waits 5 minutes instead of 15 seconds" width="100%">
 
 ## Install
 
@@ -14,8 +27,6 @@ The normal Switch version doesn't work on Peanuts. It patches the game while it'
 4. In Peanuts, long-press ACNH to open its settings, then go to **Install mod… > Zip file** and pick `qol-enhancements-peanuts.zip`.
 5. Peanuts rebuilds the game with the mod. That took about 5 minutes for me. Then hit Play.
 
-<img src="docs/img/patcher.png" alt="the patcher page after making the zip" width="420">
-
 Peanuts will put a "A module's hooks will not run" warning on the mod. You can ignore it: the hooks are already baked in.
 
 To remove the mod, hit the trash icon next to it and let Peanuts rebuild. If you turned on clam or trash stacking, turn it off and unstack those first. The comments in `pockets.ini` explain why.
@@ -23,26 +34,6 @@ To remove the mod, hit the trash icon next to it and let Peanuts rebuild. If you
 ![the mod in Peanuts' mod list](docs/img/peanuts-mods.jpg)
 
 <sub>ACNH-Combined is just another mod I have installed. You don't need it.</sub>
-
-## Features
-
-All of this is Arcusaren's work, I just got it running on Peanuts. If something doesn't work, please open an issue!
-
-- **Controls**
-  - Hold Y to skip dialogue up to the next choice
-  - Hold Y to keep picking up items, crops and weeds
-  - Vault rivers and climb cliffs on your own, swim without pressing A, and tilt the camera while swimming
-- **Pockets**
-  - Grab 5 or grab 10 from a stack, ZL to drop, ZR to use
-  - Hold A to select a bunch of items when selling or putting things away
-  - Y sends items to home storage, and A opens presents and mail without the menu
-  - Optional stacking for Manila clams and fishing trash
-- **Crafting**: faster crafting (and cooking), the quantity wraps from 10 back to 1, Y jumps straight to quantity, and the DIY app shows 3D previews
-- **Faster Dialogue**: faster text, with an optional extra boost for shopkeepers
-- **Catalog**: a star on anything you haven't collected yet, including in Nook Shopping
-- **Shopping Card**: pay at Nook's Cranny, Able Sisters and for storage upgrades with your savings
-- **Fitting Room**: buy several clothes at once, X uses a tailor ticket, B skips "wear them out?"
-- **Core**: the rest need it. It also makes the amiibo scanner wait 5 minutes instead of 15 seconds
 
 ## Settings
 
