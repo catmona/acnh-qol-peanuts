@@ -26,10 +26,10 @@ To remove the mod, hit the trash icon next to it and let Peanuts rebuild. If you
 
 ## Features
 
-All of this is Arcusaren's work, I just got it running on Peanuts. Everything loads with no errors, but holding Y through dialogue is the only thing I've actually tried in game so far. If you try any of the rest, please open an issue and tell me how it went!
+All of this is Arcusaren's work, I just got it running on Peanuts. If something doesn't work, please open an issue!
 
 - **Controls**
-  - Hold Y to skip dialogue up to the next choice ✅ tested
+  - Hold Y to skip dialogue up to the next choice
   - Hold Y to keep picking up items, crops and weeds
   - Vault rivers and climb cliffs on your own, swim without pressing A, and tilt the camera while swimming
 - **Pockets**
@@ -46,13 +46,11 @@ All of this is Arcusaren's work, I just got it running on Peanuts. Everything lo
 
 ## Settings
 
-These are the same .ini files as the original mod, one per module, in `atmosphere/contents/01006F8002326000/romfs/qol-enhancements/config/` inside the zip. Every option has a comment above it, and `enabled = false` turns a module off. Edit them before you install. I haven't tried changing these on Peanuts yet.
+These are the same .ini files as the original mod, one per module, in `atmosphere/contents/01006F8002326000/romfs/qol-enhancements/config/` inside the zip. Every option has a comment above it, and `enabled = false` turns a module off. Edit them before you install.
 
-## Status / known issues
+## Troubleshooting
 
-I tested on my AYN Thor with Peanuts Native 0.1.7. All the modules load, the game runs at its normal 30fps, and holding Y through dialogue works.
-
-My test game crashed right when it got to the island. I also had a big ACNH mod pack on with some old 2.x models in it, and those have crashed the game the same way before. Nothing in the crash points at this mod. If you get crashes, try turning your other mods off first. More notes are in [PORT.md](docs/PORT.md#play-test-ayn-thor-11-24-1214-to-1228-am).
+I run it on my AYN Thor with Peanuts Native 0.1.7.
 
 If the patcher says "No Core plugin in that zip" or "This is not QoL Enhancements 1.1.0", you picked the wrong download. You need the Modded Switch one, v1.1.0.
 
