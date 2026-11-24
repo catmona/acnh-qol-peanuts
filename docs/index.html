@@ -3,50 +3,146 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#cfe8b6">
 <title>QoL for Peanuts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Nunito:wght@500;700;800&display=swap" rel="stylesheet">
 <style>
-  :root { --bg: #242229; --raised: #35333d; --well: #1b1a1f; --line: #3d3b47; --text: #b4befe; --on-accent: #242229;
-          --secondary: #9fa7ea; --muted: #898fbe; --danger: #fc6399; --success: #a0daa0; }
+  :root { color-scheme: light;
+          --grass: #cfe8b6; --leaf: #6dbb4f; --leaf-dark: #4b9435; --cream: #fffaeb; --cream-2: #f6eed3;
+          --bark: #6b5236; --bark-soft: #95805f; --line: #e6dbbb; --tag: #f2a541; --sky: #7ccfd8;
+          --ok: #3f8f2e; --err: #c8493d; }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, sans-serif; }
-  main { max-width: 34rem; margin: 0 auto; padding: 24px 16px 48px; }
-  h1 { font-size: 1.4rem; margin: 0 0 4px; }
-  p { margin: 0 0 12px; }
-  .sub { color: var(--muted); margin-bottom: 24px; }
-  a { color: var(--secondary); }
-  ol { padding-left: 1.3rem; margin: 0 0 20px; }
-  li { margin-bottom: 14px; }
-  label { display: block; margin-top: 6px; }
-  input[type=file] { width: 100%; margin-top: 6px; padding: 10px; background: var(--raised); color: var(--text);
-                     border: 1px solid var(--line); border-radius: 8px; }
-  input[type=file]::file-selector-button { background: var(--well); color: var(--text); border: 1px solid var(--line);
-                     border-radius: 6px; padding: 6px 10px; margin-right: 10px; }
-  button { width: 100%; padding: 14px; font: inherit; font-weight: 600; background: var(--text); color: var(--on-accent);
-           border: 0; border-radius: 8px; cursor: pointer; }
-  button:disabled { opacity: .45; cursor: default; }
-  #status { margin-top: 16px; padding: 12px; background: var(--well); border: 1px solid var(--line); border-radius: 8px;
-            min-height: 3rem; white-space: pre-wrap; }
-  .ok { color: var(--success); } .err { color: var(--danger); }
-  .foot { color: var(--muted); font-size: .9rem; margin-top: 24px; }
+  html { background: var(--grass); }
+  body { margin: 0; min-height: 100vh; color: var(--bark); font: 500 16px/1.55 Nunito, system-ui, sans-serif;
+         background-color: var(--grass);
+         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg fill='%23b9dc9b'%3E%3Cpath d='M30 12c-9 6-11 17-5 26 9 0 15-8 14-18-2-4-5-7-9-8z'/%3E%3Cpath d='M90 72c-9 6-11 17-5 26 9 0 15-8 14-18-2-4-5-7-9-8z' transform='rotate(35 90 85)'/%3E%3C/g%3E%3Cg fill='%23ffffff' opacity='.45'%3E%3Ccircle cx='88' cy='22' r='3'/%3E%3Ccircle cx='24' cy='88' r='3'/%3E%3C/g%3E%3C/svg%3E"); }
+  main { max-width: 36rem; margin: 0 auto; padding: 28px 16px 40px; }
+  h1, h2, .num, .tag, button, .pill { font-family: Fredoka, Nunito, system-ui, sans-serif; font-weight: 600; }
+  a { color: var(--leaf-dark); font-weight: 700; text-decoration-thickness: 2px; text-underline-offset: 2px; }
+  code { font: 700 .86em ui-monospace, Consolas, monospace; background: var(--cream-2); padding: 1px 6px; border-radius: 6px;
+         overflow-wrap: anywhere; }
+  p { margin: 0 0 10px; }
+
+  header { text-align: center; margin-bottom: 22px; }
+  .badge { width: 76px; height: 76px; margin: 0 auto 10px; display: grid; place-items: center; border-radius: 50%;
+           background: var(--cream); box-shadow: 0 4px 0 var(--line), 0 10px 24px rgba(75, 110, 50, .18); }
+  .badge svg { width: 48px; height: 48px; animation: sway 4s ease-in-out infinite; transform-origin: 30% 90%; }
+  @keyframes sway { 50% { transform: rotate(-8deg); } }
+  .kicker { display: inline-block; margin-bottom: 8px; padding: 2px 12px; border-radius: 999px; background: var(--leaf);
+            color: #fff; font: 700 .8rem/1.6 Nunito, sans-serif; letter-spacing: .04em; }
+  h1 { margin: 0 0 8px; font-size: clamp(1.6rem, 6vw, 2.1rem); line-height: 1.15; color: var(--bark); }
+  .sub { max-width: 30rem; margin: 0 auto; color: var(--bark-soft); }
+
+  .card { position: relative; background: var(--cream); border-radius: 26px; padding: 18px 20px;
+          box-shadow: 0 5px 0 var(--line), 0 14px 30px rgba(75, 110, 50, .15); }
+  ol.steps { list-style: none; margin: 0 0 22px; padding: 0; display: grid; gap: 16px; }
+  .step { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: start; }
+  .num { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; font-size: 1.2rem;
+         background: var(--leaf); color: #fff; box-shadow: 0 3px 0 var(--leaf-dark); transition: background .2s; }
+  .step.done .num { background: var(--sky); box-shadow: 0 3px 0 #4fa7b1; }
+  h2 { margin: 4px 0 6px; font-size: 1.15rem; }
+
+  .pick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 10px; cursor: pointer; }
+  .sr { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; clip-path: inset(50%); }
+  .pill { padding: 8px 18px; border-radius: 999px; background: #fff; color: var(--leaf-dark); border: 2px solid var(--leaf);
+          box-shadow: 0 3px 0 var(--leaf); font-size: 1rem; transition: transform .1s; }
+  .pick:hover .pill { background: #f3fbe9; }
+  .pick:active .pill { transform: translateY(2px); box-shadow: 0 1px 0 var(--leaf); }
+  .pick:focus-within .pill { outline: 3px solid var(--tag); outline-offset: 2px; }
+  .fname { color: var(--bark-soft); font-size: .92rem; overflow-wrap: anywhere; min-width: 0; }
+  .step.done .fname { color: var(--ok); font-weight: 800; }
+  .step.done .fname::before { content: "\2713  "; }
+
+  button { width: 100%; margin-top: 4px; padding: 14px; font-size: 1.15rem; color: #fff; background: var(--leaf);
+           border: 0; border-radius: 999px; box-shadow: 0 5px 0 var(--leaf-dark); cursor: pointer; transition: transform .1s, box-shadow .1s; }
+  button:hover:not(:disabled) { background: #77c659; }
+  button:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 2px 0 var(--leaf-dark); }
+  button:focus-visible { outline: 3px solid var(--tag); outline-offset: 3px; }
+  button:disabled { background: #c9c2a8; box-shadow: 0 5px 0 #aaa185; cursor: default; }
+
+  .card.dialog { margin-top: 28px; padding: 26px 40px 22px 24px; border-radius: 34px / 30px; }
+  .tag { position: absolute; top: -15px; left: 22px; padding: 3px 16px; border-radius: 999px; background: var(--tag);
+         color: #fff; font-size: .95rem; transform: rotate(-4deg); box-shadow: 0 3px 0 #d0852a; }
+  #status { margin: 0; min-height: 1.6em; white-space: pre-wrap; font-weight: 700; }
+  #status.ok { color: var(--ok); } #status.err { color: var(--err); }
+  .dialog::after { content: ""; position: absolute; right: 22px; bottom: 12px; border: 7px solid transparent;
+                   border-top: 9px solid var(--tag); border-bottom: 0; animation: bob 1.2s ease-in-out infinite; }
+  @keyframes bob { 50% { transform: translateY(3px); } }
+
+  .then { margin-top: 18px; }
+  .then h2 { display: flex; align-items: center; gap: 8px; }
+  .then svg { width: 22px; height: 22px; flex: none; }
+  footer { margin-top: 22px; text-align: center; color: var(--bark-soft); font-size: .9rem; }
+  footer p { margin: 0 0 4px; }
+
+  @media (max-width: 420px) { .card { padding: 16px; border-radius: 22px; } .step { gap: 12px; } .num { width: 34px; height: 34px; }
+                              .card.dialog { padding: 26px 36px 20px 18px; } }
+  @media (prefers-reduced-motion: reduce) { .badge svg, .dialog::after { animation: none; } }
 </style>
 </head>
 <body>
 <main>
-  <h1>QoL Enhancements for Peanuts</h1>
-  <p class="sub">Turns the Switch download of Arcusaren's QoL Enhancements 1.1.0 into a mod zip for Peanuts Native (ACNH 3.0.3).
-    It all runs in your browser; nothing is uploaded.</p>
-  <ol>
-    <li>Download <b>Main download (Modded Switch)</b> from <a href="https://gamebanana.com/mods/727637">GameBanana</a>
-      (<code>qol-switch-v1_1_0-acnh-v3_0_3.zip</code>).
-      <label>Pick it here: <input type="file" id="mod" accept=".zip"></label></li>
-    <li>Download <code>qol-peanuts-patch.json</code> from the
-      <a href="https://github.com/catmona/acnh-qol-peanuts/releases/latest">latest release</a>.
-      <label>Pick it here: <input type="file" id="patch" accept=".json,application/json"></label></li>
-    <li><button id="go" disabled>Make the Peanuts zip</button></li>
+  <header>
+    <div class="badge" aria-hidden="true">
+      <svg viewBox="0 0 64 64"><path d="M30 6C13 16 7 37 18 55c20 2 36-14 36-34C48 11 40 7 30 6z" fill="#6dbb4f"/>
+        <path d="M18 55C24 40 31 28 44 16" fill="none" stroke="#4b9435" stroke-width="3.5" stroke-linecap="round"/>
+        <path d="M18 55l-6 6" stroke="#8a6a43" stroke-width="4" stroke-linecap="round"/>
+        <path d="M27 40l-7-4M33 31l-6-6M33 31l9 1M27 40l10 2" stroke="#4b9435" stroke-width="2.5" stroke-linecap="round"/></svg>
+    </div>
+    <span class="kicker">Peanuts Native &middot; ACNH 3.0.3</span>
+    <h1>QoL Enhancements for Peanuts</h1>
+    <p class="sub">Turns the Switch download of Arcusaren's QoL Enhancements 1.1.0 into a mod zip for Peanuts Native.
+      It all runs in your browser; nothing is uploaded.</p>
+  </header>
+
+  <ol class="steps">
+    <li class="card step" id="step-mod">
+      <span class="num" aria-hidden="true">1</span>
+      <div>
+        <h2>Get the mod</h2>
+        <p>Download <b>Main download (Modded Switch)</b> from <a href="https://gamebanana.com/mods/727637">GameBanana</a>
+          (<code>qol-switch-v1_1_0-acnh-v3_0_3.zip</code>).</p>
+        <label class="pick"><input class="sr" type="file" id="mod" accept=".zip">
+          <span class="pill">Pick the zip</span><span class="fname" id="mod-name">No file yet</span></label>
+      </div>
+    </li>
+    <li class="card step" id="step-patch">
+      <span class="num" aria-hidden="true">2</span>
+      <div>
+        <h2>Get the patch</h2>
+        <p>Download <code>qol-peanuts-patch.json</code> from the
+          <a href="https://github.com/catmona/acnh-qol-peanuts/releases/latest">latest release</a>.</p>
+        <label class="pick"><input class="sr" type="file" id="patch" accept=".json,application/json">
+          <span class="pill">Pick the patch</span><span class="fname" id="patch-name">No file yet</span></label>
+      </div>
+    </li>
+    <li class="card step">
+      <span class="num" aria-hidden="true">3</span>
+      <div>
+        <h2>Make the zip</h2>
+        <button id="go" disabled>Make the Peanuts zip</button>
+      </div>
+    </li>
   </ol>
-  <div id="status">Pick both files.</div>
-  <p class="foot">Then in Peanuts: ACNH's settings, <b>Install mod… &gt; Zip file</b>, pick <code>qol-enhancements-peanuts.zip</code>.
-    <a href="https://github.com/catmona/acnh-qol-peanuts">Source and details</a>.</p>
+
+  <div class="card dialog" role="status" aria-live="polite">
+    <span class="tag">Status</span>
+    <p id="status">Pick both files.</p>
+  </div>
+
+  <section class="card then">
+    <h2><svg viewBox="0 0 64 64" aria-hidden="true"><path d="M30 6C13 16 7 37 18 55c20 2 36-14 36-34C48 11 40 7 30 6z" fill="#6dbb4f"/>
+      <path d="M18 55C24 40 31 28 44 16" fill="none" stroke="#4b9435" stroke-width="4" stroke-linecap="round"/></svg>Then, in Peanuts</h2>
+    <p>Open ACNH's settings, then <b>Install mod&hellip; &gt; Zip file</b>, and pick <code>qol-enhancements-peanuts.zip</code>.
+      Peanuts rebuilds the game with the mod, which takes about 5 minutes.</p>
+  </section>
+
+  <footer>
+    <p><a href="https://github.com/catmona/acnh-qol-peanuts">Source and details</a></p>
+    <p>A fan-made port. Not affiliated with Nintendo.</p>
+  </footer>
 </main>
 <script>
 'use strict';
@@ -159,7 +255,13 @@ async function build(modBytes, patch) {
 if (typeof document !== 'undefined') {
   const $ = id => document.getElementById(id), status = (t, cls) => { $('status').textContent = t; $('status').className = cls || ''; };
   const ready = () => { $('go').disabled = !($('mod').files.length && $('patch').files.length); };
-  $('mod').onchange = ready; $('patch').onchange = ready;
+  const picked = id => {
+    const f = $(id).files[0];
+    $(id + '-name').textContent = f ? f.name : 'No file yet';
+    $('step-' + id).classList.toggle('done', !!f);
+    ready();
+  };
+  $('mod').onchange = () => picked('mod'); $('patch').onchange = () => picked('patch');
   $('go').onclick = async () => {
     $('go').disabled = true; status('Working…');
     try {
