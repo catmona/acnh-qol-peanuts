@@ -24,6 +24,19 @@ Peanuts warns that the mod looks like an exlaunch plugin. You can ignore that.
 
 Tested on an AYN Thor with Peanuts Native 0.1.7: Core and all seven features load with no errors, and the game runs at its normal 30 fps. The features haven't each been tried in play yet.
 
+## Features
+
+What each module does, and whether it has been tried in play on Peanuts.
+
+- **Pockets** (not checked yet): Grab 5 or Grab 10 from a stack, ZL to drop or release, ZR to use an item, hold A to pick several items in shop and storage menus, Y to send items to storage at home, A to open presents and mail without a menu. Optional stacking for Manila clams and fishing trash.
+- **Controls** (not checked yet): hold Y to skip dialogue up to the next choice, or to keep picking up items, crops and weeds. Vaults rivers and climbs cliffs on its own, swims without pressing A, and lets the camera tilt while swimming.
+- **Crafting** (not checked yet): faster crafting, the quantity wraps between 1 and 10, Y goes straight to the quantity, and the DIY app shows 3D previews. Cooking too.
+- **Faster Dialogue** (not checked yet): text runs faster, with an optional boost for shop and service characters.
+- **Catalog** (not checked yet): a star on items, recipes, critters and art you haven't collected yet, including in Nook Shopping and the other catalogs.
+- **Shopping Card** (not checked yet): pay at Nook's Cranny, Able Sisters and for storage upgrades from your savings, topped up from your pockets.
+- **Fitting Room** (not checked yet): Y adds clothes to a bag so you can buy several at once, X applies a tailor ticket, B skips the "wear them out?" question.
+- **Core** (loads; timer not checked yet): needed by the rest. Gives the amiibo scanner 5 minutes instead of 15 seconds.
+
 ## How it works
 
 The mod hooks the game by patching its code at run time. Peanuts compiles the game ahead of time, so those patches never land. This port puts the hooks in at build time instead: an IPS patch for the game's `main`, plus a patched copy of the mod's Core plugin. [docs/PORT.md](docs/PORT.md) has the details.

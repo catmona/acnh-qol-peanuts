@@ -191,6 +191,11 @@ which makes Peanuts print the plugin's svcOutputDebugString lines as `[guest]`.
 Not checked by hand yet: each feature in play (a held-A run through dialogue, Pockets stacking, the catalog stars),
 and the companion's inventory pages with Pockets stacking on.
 
+Feature status (11-24): no feature has been tried in play, so the README marks all eight "not checked yet"; Core
+only as "loads". The Thor has no ACNH save (`saves/01006F8002326000` is empty), so a play test means a new game, and
+the shops (Shopping Card, Fitting Room) and the amiibo timer need an island further along. A play test was offered
+on 11-24 at about 12:05 AM and put off by the owner. The page's stored zip has not been installed in Peanuts yet.
+
 ### Residual risks
 
 - Heap budget: settled on the device (above). The rewriter's patch area for subsdk6 is 26 KiB, well inside the
