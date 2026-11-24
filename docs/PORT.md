@@ -1,6 +1,6 @@
 # Port notes
 
-State as of 11-23. Build: ACNH 3.0.3, main build ID ff1d1c05670db6021c85b624a710b963.
+State as of 11-23 (device-tested). Build: ACNH 3.0.3, main build ID ff1d1c05670db6021c85b624a710b963.
 
 ## Hook inventory
 
@@ -81,8 +81,8 @@ mem_used (0x7a00000, `dm/games/01006F8002326000/game.tsv`) is the unmodded modul
 | bss growth | 0xdc000 (880 KiB) |
 | subsdk6 image, was 2.09 MiB | 2.94 MiB |
 
-That leaves about 1 MiB of the 4 MiB. If Peanuts' rewriter adds a patch area to subsdk6 bigger than that, the boot
-log shows `[mem] SetHeapSize ... + modules ... > app pool`. The window pages are contiguous, so they cost about
+That leaves about 1 MiB of the 4 MiB. On the device Peanuts' rewriter adds a 26 KiB patch area (subsdk6 is 0x308000
+there) and SetHeapSize passes (see "Device test"). The window pages are contiguous, so they cost about
 55 16 KiB host pages, about 0.9 MB resident on the device (the alias build cost about 3.1 MB).
 
 ### How it works
@@ -165,17 +165,37 @@ shipped run checked 1,238 window reads.
 
 Every hook ports; none had to be dropped.
 
+### Device test (AYN Thor, Peanuts Native 0.1.7, 11-23)
+
+The zip was installed with Install mod > Zip file and built with "Build with mods" (5 min 7 s). ACNH-Combined-3.0.3
+was off. The run used the stock ACNH game.tsv (no `mem_map_limit` row) and `DM_DBG=1` in the game's Extra environment,
+which makes Peanuts print the plugin's svcOutputDebugString lines as `[guest]`.
+
+| Check | Log or screen |
+| --- | --- |
+| subsdk6 loads | `subsdk6: gates 15 patch_off 0x300000`, `base ... size 0x308000` (2.94 MiB image plus the 26 KiB patch area) |
+| Branches linked | `xmod: main 151 branches into subsdk6; subsdk6 159 branches into main` |
+| Heap budget | `[mem] heap 3.09 GB (heap region 3.25 GB)`: SetHeapSize passed |
+| Plugin init | `DT_INIT +0x6dbd0`, then `[QoL Enhancements] Core: 1.1.0; slot=subsdk6; configuration ready` |
+| Modules | all 8 report `1.1.0; enabled=true` with their settings: Catalog, Pockets, Faster Dialogue, Fitting Room, Shopping Card, Crafting, Controls (and Core) |
+| Dialogue rules | `[QoL Enhancements/Controls] dialogue halt rules=634`, the same count as the emulator run |
+| Reason codes | none: no reporter line and no failure line in the whole log |
+| Play | the Nook Inc. intro dialogue runs at 30 fps (1% low 27) and advances with A |
+| Companion | `[peanuts] companion ticks: 1793 in 30.0 s`, 1.88 ms each |
+
+Not checked by hand yet: each feature in play (a held-A run through dialogue, Pockets stacking, the catalog stars),
+and the companion's inventory pages with Pockets stacking on.
+
 ### Residual risks
 
-- Heap budget: subsdk6 needs about 1 MiB of headroom under ACNH's 4 MiB (above). The rewriter's patch area for
-  subsdk6 is unknown offline. If it is too big, SetHeapSize fails at boot and says so in the log.
-- The companion helper's code block must fit within main + 120 MB (`dm/peanuts/peanuts.c` 435-457). That was
-  already tight; the window adds 0.9 MB to it.
+- Heap budget: settled on the device (above). The rewriter's patch area for subsdk6 is 26 KiB, well inside the
+  1 MiB of headroom.
+- The companion helper's code block must fit within main + 120 MB (`dm/peanuts/peanuts.c` 435-457), and the
+  window adds 0.9 MB to that reach. It fit on the device: `[peanuts] companion ticks: 1793 in 30.0 s`.
 - textreads.tsv comes from two traced runs. A check reached only on a path the emulator never ran (for example a
   late-installed hook in a scene it doesn't load) would read through real main, see a branch and turn its own
   feature off. To find one, run `EMU_LAZY=1` and append its textreads output.
 - A displaced `bl` returns into plugin text (B8). A callee that checks its return address would notice.
-- Not yet run on a device: that needs the parent's OK (the Thor lock).
 
 ## Companion (Eden Duo dual-screen package)
 
