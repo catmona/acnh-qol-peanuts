@@ -60,21 +60,30 @@ port.
 - `qol-enhancements-peanuts.zip`, laid out as Atmosphère: `atmosphere/contents/01006F8002326000/{exefs,romfs}` and
   `atmosphere/exefs_patches/qol-peanuts/`. Peanuts' ModImporter reads that layout, and "Build with mods" applies it.
 
-The zip holds bytes copied from the user's own dump of main (the window's contents, packed in plugin text). Do not
-redistribute it. This repo stores offsets only (docs/readset.tsv, docs/textreads.tsv).
+The zip holds a few bytes copied from the user's own dump of main: the 151 original site words and the displaced
+instructions, packed in plugin text. Do not redistribute it. This repo stores offsets only (docs/textreads.tsv).
 
-### Requirement: one Peanuts data row
+### No Peanuts row needed: the window is in the plugin's bss
 
-The shadow window is mapped with svcMapPhysicalMemory in the alias region. Peanuts only allows that with this row in
-`dm/games/01006F8002326000/game.tsv`:
+An earlier build (07158e2) mapped the window with svcMapPhysicalMemory in the alias region, which needs
+`mem_map_limit off` in Peanuts' ACNH game.tsv. The window now lives in subsdk6's own bss instead. Peanuts maps
+module bss as anonymous, uncommitted pages, so the zip works on stock Peanuts with no host row.
 
-```
-mem_map_limit	off
-```
+A copy of all of main's text in bss (63 MB) would not fit. Peanuts' SetHeapSize refuses when the module images
+summed, rounded up to 2 MB, leave too little of the app pool (work/src `dm/host/hle_svc.c` 575-590). ACNH's
+mem_used (0x7a00000, `dm/games/01006F8002326000/game.tsv`) is the unmodded modules plus 4 MiB
+(`dm/games/profile_guess.py` 466-469), so subsdk6 has 4 MiB to live in. So the window is sparse:
 
-The key already exists, and three games use it. The unmodded game is unaffected: ACNH never calls
-MapPhysicalMemory. Without the row the map fails. The window pointer then falls back to the real main, every
-fingerprint check sees the IPS's branches, the plugin turns its features off, and the game runs without QoL.
+| | Size |
+| --- | --- |
+| Pages copied: each page within 64 bytes of a hook site (119), plus the page after each (96 more, so a read across a page end stays in the copy) | 215 × 4 KiB = 860 KiB |
+| Page table: one byte per page of main's text (0 = not copied, else slot + 1) | 16 KiB |
+| bss growth | 0xdc000 (880 KiB) |
+| subsdk6 image, was 2.09 MiB | 2.94 MiB |
+
+That leaves about 1 MiB of the 4 MiB. If Peanuts' rewriter adds a patch area to subsdk6 bigger than that, the boot
+log shows `[mem] SetHeapSize ... + modules ... > app pool`. The window pages are contiguous, so they cost about
+55 16 KiB host pages, about 0.9 MB resident on the device (the alias build cost about 3.1 MB).
 
 ### How it works
 
@@ -83,20 +92,20 @@ fingerprint check sees the IPS's branches, the plugin turns its features off, an
 2. **Module walk.** FindModules starts at main and counts rtld as present. Peanuts has no rtld, but the plugin
    asserts on it in mem_layout.cpp (plugin 0x6e160). The rtld record is a copy of main's record. The walk stops
    after the plugin's own record.
-3. **Shadow window** (`shadow_setup`, run at exl init instead of RwPages(main)). It does:
-   1. svcGetInfo(AliasRegionAddress);
-   2. svcMapPhysicalMemory(alias, 0x3f07000), which is all of main's text, committed lazily;
-   3. copies in the original bytes the plugin reads (docs/readset.tsv plus 20 bytes at each site; 271 4 KiB
-      pages, 196 16 KiB host pages, about 3.1 MB resident on the device);
-   4. stores the window's address in SHADOW_PTR.
+3. **Shadow window** (`shadow_setup`, run at exl init instead of RwPages(main), before any hook goes in). It:
+   1. copies each of the 215 pages from the real main into its bss slot;
+   2. puts each site's original word back in the copy (the IPS word is already in main by then);
+   3. fills the page table for the 119 redirected pages.
+
+   Before this runs the page table is all zero, so a load reads the real main.
 4. **Main's record stays real.** The plugin reads main's data through record1 too (for example
    [base+0x4ab2020] at 0x6bd58), so the record cannot point at the window.
 5. **Load thunks.** Each plugin load that reads a word the IPS changes is a `b` to its own thunk. There are 307 of
    these, listed in [textreads.tsv](textreads.tsv). The thunk:
    1. saves x16 and x17;
    2. puts the load's address in x17;
-   3. calls `xlate`, which moves an address inside main's text into the window and leaves any other address
-      alone;
+   3. calls `xlate`, which looks the address's page up in the page table and, for a copied page, moves it into the
+      window; any other address is left alone;
    4. runs the original load from [x17];
    5. restores x16 and x17, skipping a register the load itself wrote;
    6. applies any writeback and branches back.
@@ -132,7 +141,7 @@ Each one is checked against the stock word before it is patched.
 a thunk it now reads the original bytes. The plugin's reporter (plugin 0xf920, the reason codes) is never called
 in either verification run below, so there is no reason code to log.
 
-### Verification (tools/emu.py, Peanuts mode, 11-23)
+### Verification (tools/emu.py, Peanuts mode, 11-23, bss window)
 
 The emulator models Peanuts' behaviour:
 
@@ -141,13 +150,15 @@ The emulator models Peanuts' behaviour:
 - main's text is read-only;
 - placeholder svcs;
 - far b/bl re-aimed;
-- an alias window from MapPhysicalMemory.
+- no svcMapPhysicalMemory: the window is the plugin's bss.
 
 `EMU_LAZY=1` is the discovery mode. It keeps main clean and writes each IPS word only when its hook is installed,
 which mirrors what the window shows. Its `<out>.<phase>.textreads.txt` gave textreads.tsv, the union of the two
-configs below.
+configs below. "Window reads unlike the dump" counts every byte the plugin reads from the bss window that differs
+from the dump's main text at that spot (site words aside, which hold the original or the installed word). The
+shipped run checked 1,238 window reads.
 
-| Config | Slots filled | Main text writes | IPS words read through real main | Window reads outside the read set | Reporter calls |
+| Config | Slots filled | Main text writes | IPS words read through real main | Window reads unlike the dump | Reporter calls |
 | --- | --- | --- | --- | --- | --- |
 | Shipped romfs | 132/151 (19 empty are the Tweaks hooks; tweaks.ini is not shipped) | 0 | 0 | 0 | 0 |
 | tweaks.ini on (every option, both show-off times 1500) | 151/151 | 0 | 0 | 0 | 0 |
@@ -156,8 +167,10 @@ Every hook ports; none had to be dropped.
 
 ### Residual risks
 
-- The mod needs a Peanuts build that carries the `mem_map_limit` row. Without it, the result is no QoL rather than
-  a crash.
+- Heap budget: subsdk6 needs about 1 MiB of headroom under ACNH's 4 MiB (above). The rewriter's patch area for
+  subsdk6 is unknown offline. If it is too big, SetHeapSize fails at boot and says so in the log.
+- The companion helper's code block must fit within main + 120 MB (`dm/peanuts/peanuts.c` 435-457). That was
+  already tight; the window adds 0.9 MB to it.
 - textreads.tsv comes from two traced runs. A check reached only on a path the emulator never ran (for example a
   late-installed hook in a scene it doesn't load) would read through real main, see a branch and turn its own
   feature off. To find one, run `EMU_LAZY=1` and append its textreads output.

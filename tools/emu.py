@@ -385,14 +385,15 @@ if PEANUTS:
         pc = uc_.reg_read(UC_ARM64_REG_PC)
         if P <= pc < P + PLUG_TEXT_END and not (PEANUTS['code'] <= pc - P < PEANUTS['end']): text_reads[(addr - M, size, pc - P)] += 1
     uc.hook_add(UC_HOOK_MEM_READ, on_text_read, begin=M, end=M + MAIN_RO - 1)
-    # reads of the window outside the bytes build.py packed (they read zeros)
-    _runs = [struct.unpack_from('<II', plug, PEANUTS['runs'] + 8 * i) for i in range(PEANUTS['readset_runs'])]
-    _have = bytearray(PEANUTS['window'])
-    for _o, _n in _runs: _have[_o:_o + _n] = b'\1' * _n
+    # reads of the bss window (slot k shows main page window_pages[k]) whose bytes differ from the dump's main text there, site words aside (those hold the
+    # original word or, once its hook is in, the IPS word): a copy that went wrong
+    _wpages, _win, _sitew = PEANUTS['window_pages'], P + PEANUTS['window'], {s + i for s in ips_sites for i in range(4)}
     def on_shadow_read(uc_, access, addr, size, value, ud):
-        o = addr - ALIAS
-        if o < len(_have) and not all(_have[o:o + size]): shadow_misses[(o, size, uc_.reg_read(UC_ARM64_REG_PC) - P)] += 1
-    uc.hook_add(UC_HOOK_MEM_READ, on_shadow_read, begin=ALIAS, end=ALIAS + PEANUTS['window'] - 1)
+        k, lo = divmod(addr - _win, 0x1000); mo = (_wpages[k] << 12) + lo
+        got = rd(addr, size)
+        if any(got[i] != MAIN_CLEAN_TEXT[mo + i] for i in range(size) if mo + i not in _sitew):
+            shadow_misses[(mo, size, uc_.reg_read(UC_ARM64_REG_PC) - P)] += 1
+    uc.hook_add(UC_HOOK_MEM_READ, on_shadow_read, begin=_win, end=_win + 0x1000 * len(_wpages) - 1)
     # the plugin's reporter (0xf920): who calls it with what
     def on_report(uc_, addr, size, ud): reports[(where(uc_.reg_read(UC_ARM64_REG_LR)), X(0) & 0xffffffff, X(1) & 0xffffffff)] += 1
     uc.hook_add(UC_HOOK_CODE, on_report, begin=P + 0xf920, end=P + 0xf920)
@@ -441,7 +442,7 @@ def dump(tag):
     if PEANUTS:
         rep['peanuts'] = pr = peanuts_report()
         print(f"## {tag}: slots {pr['slots_filled']}/{PEANUTS['n']} filled; main text writes {len(pr['main_text_writes'])}; plugin reads of real main text "
-              f"{len(pr['main_text_reads'])} (pcs {len({r[2] for r in pr['main_text_reads']})}); window reads outside the read set {len(pr['shadow_misses'])}; "
+              f"{len(pr['main_text_reads'])} (pcs {len({r[2] for r in pr['main_text_reads']})}); window reads unlike the dump {len(pr['shadow_misses'])}; "
               f"reporter calls {sum(r[3] for r in pr['reports'])}; reads of IPS words through real main (pcs) {len(pr['ips_word_reads'])}; record1 {pr['record1']}")
         open(f'{OUT}.{tag}.textreads.txt', 'w').write(''.join(pc + '\n' for pc in pr['ips_word_reads']))
     json.dump(rep, open(f'{OUT}.{tag}.json', 'w'), indent=0)

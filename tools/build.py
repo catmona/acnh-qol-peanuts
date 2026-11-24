@@ -6,14 +6,17 @@ Usage: python -P -E tools/build.py --exefs <game exefs dir: main, subsdk0> [--mo
 What it does to the plugin (offsets are subsdk6's; every patched word is checked against the stock one first):
 - FindModules starts its QueryMemory walk at main (a far `b main+0` anchor that the loader re-aims) and counts rtld as present. It stops once it has recorded the
   module after itself (sdk), so the 4 KiB free pages Peanuts reports past the arena are never walked.
-- exl init maps a window in the alias region (svcGetInfo AliasRegionAddress, svcMapPhysicalMemory; needs `mem_map_limit off` in Peanuts' ACNH game.tsv). It fills the
-  window with the bytes of the game's main that the plugin reads (docs/readset.tsv plus 20 bytes at each hook site, all original, packed in plugin text). main's
-  record stays the real main (the plugin reaches main's data through it too). Instead, each plugin load that reads a word the IPS changes (docs/textreads.tsv)
-  becomes a `b` to a thunk: it works out the load's address, xlate moves an address in main's text into the window, and the load runs from there. The flags
-  and every other register are kept. If the map fails, the window pointer is the real main, and the checks see the IPS's branches and turn their features off.
+- The window lives in the plugin's own bss: a page table (one byte per page of main's text) and copies of the main text pages near each hook site (the pages
+  within 64 bytes of a site, each with the page after it, so a read that runs across a page end stays in the copy). exl init (shadow_setup) copies those pages
+  from the real main before any hook goes in, puts each site's original word back (the IPS word is already there by then) and fills the page table. No svc and
+  no Peanuts row: Peanuts maps module bss as anonymous pages. main's record stays the real main (the plugin reaches main's data through it too). Instead, each
+  plugin load that reads a word the IPS changes (docs/textreads.tsv) becomes a `b` to a thunk: it works out the load's address, xlate moves an address on a
+  copied page into the window, and the load runs from there. The flags and every other register are kept. Before init, and for any other page, the page
+  table says 0 and the load reads the real main.
 - No code is written into main at run time. Each hook site gets a `b stub_i` from the IPS. HookFunc and HookInline only fill SLOTS[i], copy the installed word into
   the window (so the "publication" re-read sees a change), and HookFunc returns the site's trampoline. An empty slot runs the original code.
-The shadow bytes come from the user's own dump at build time; nothing of the game is stored in this repo.
+The 151 original site words (and the instructions displaced into the trampolines) come from the user's own dump at build time; nothing of the game is
+stored in this repo.
 """
 import argparse, hashlib, json, re, struct, sys, zipfile
 from pathlib import Path
@@ -88,21 +91,6 @@ def load_hooks():
     return rows
 
 
-def load_readset(sites):
-    runs = []
-    for line in (REPO / 'docs/readset.tsv').read_text(encoding='utf-8').splitlines():
-        if not line or line.startswith('#'): continue
-        o, n = (int(x, 16) for x in line.split('\t')[:2])
-        runs.append((o, o + n))
-    runs += [(s, s + 0x14) for s in sites]
-    runs.sort()
-    out = []
-    for a, b in runs:
-        if out and a <= out[-1][1]: out[-1][1] = max(out[-1][1], b)
-        else: out.append([a, b])
-    return [(a, b - a) for a, b in out]
-
-
 def load_textreads():
     """The plugin offsets of the loads that read one of the IPS's words in main (tools/emu.py EMU_LAZY's <out>.textreads.txt, the union of the runs, in
     docs/textreads.tsv): each goes through a thunk that reads the window instead"""
@@ -140,8 +128,8 @@ def thunk_src(i, xlate, back, lab):
         ea = [f'add x17, {base}, {mem[1]}' + (f', {ext}' if ext else '')]
     if post is not None:
         k = imm(post); wb = [f'add {base}, {base}, #{k}' if k >= 0 else f'sub {base}, {base}, #{-k}']
-    return '\n'.join(['sub sp, sp, #0x20', 'stp x16, x17, [sp]'] + ea + [f'adr x16, {lab}', f'b {xlate}', f'{lab}: {i.mnemonic} {regs}[x17]'] + restore + [
-                      'add sp, sp, #0x20'] + wb + [f'b {back}'])
+    return '\n'.join(['sub sp, sp, #0x30', 'stp x16, x17, [sp]'] + ea + [f'adr x16, {lab}', f'b {xlate}', f'{lab}: {i.mnemonic} {regs}[x17]'] + restore + [
+                      'add sp, sp, #0x30'] + wb + [f'b {back}'])
 
 
 def decode_branch(w, at):
@@ -193,34 +181,65 @@ def main():
     hooks = load_hooks()
     n = len(hooks)
     sites = [h['site'] for h in hooks]
-    runs = load_readset(sites)
-    win = (MAIN_TEXT + PAGE - 1) & ~(PAGE - 1)   # all of main's text: a thunk may read any of it (unlisted bytes read as zeros); the map is lazy
-    assert max(o + l for o, l in runs) <= win
-    stream = b''.join(bytes(mimg[o:o + l]) for o, l in runs)
+    # the window, in plugin bss: copies of the pages of main's text around each site word (a load of up to 64 bytes that touches the word starts and ends in
+    # them: "redirect" pages, which the page table sends to the window), and the page after each, copied but not redirected, so a load that starts in a
+    # redirect page and runs past it still reads main's bytes. Slots follow the page order, so neighbouring pages stay neighbours
+    NPT = (MAIN_TEXT + PAGE - 1) // PAGE
+    redir = {p for s in sites for p in range((s - 63) >> 12, ((s + 4 + 63) >> 12) + 1)}
+    wpages = sorted(redir | {p + 1 for p in redir})
+    assert max(redir) < NPT and len(wpages) < 0xFF and NPT < 0x10000
 
-    # bss grows by one page: SLOTS, SHADOW_PTR
+    # bss: SLOTS (one page), the page table (a byte per page of main's text: slot + 1, 0 = not redirected), the window
     data_end = pinfo['segs'][2]['moff'] + pinfo['segs'][2]['size']
     old_end = data_end + pinfo['bss']
     assert old_end % PAGE == 0
     SLOTS = old_end
-    SHADOW_PTR = SLOTS + 8 * n
-    new_bss = pinfo['bss'] + PAGE
-    assert SHADOW_PTR + 8 <= old_end + PAGE
+    assert 8 * n <= PAGE
+    PT = SLOTS + PAGE
+    WIN = PT + ((NPT + PAGE - 1) & ~(PAGE - 1))
+    new_bss = WIN + PAGE * len(wpages) - data_end
 
     # layout of the free run
     CODE = FREE[0]
     STUBS = CODE + 0x400
     TRAMPS = STUBS + 0x10 * n
     SITES = TRAMPS + 0x20 * n
-    RUNS = SITES + 4 * n
-    BYTES = RUNS + 8 * len(runs)
-    END = BYTES + 4 * ((len(stream) + 2) // 3)
+    PAGES = SITES + 4 * n             # per slot: main page | 0x10000 when redirected
+    ORIG = PAGES + 4 * len(wpages)    # per site: the original word as two halfwords (no table word can read as an instruction a scan would change)
+    END = ORIG + 8 * n
     assert END <= FREE[1], f'{END:#x} past the free run'
 
     pg = lambda off: A(off) & ~0xFFF
     lo = lambda off: off & 0xFFF
     # routines, each assembled at its own address. The anchor is the area's last word: keystone 0.9.2 refuses an adr that goes backwards
     R = [
+        # x17: an address in, the same address or its place in the window out; returns to x16. Uses the 0x30-byte frame its caller made: x16 and x17 at
+        # [sp] are the caller's, [sp+0x10..0x28] keep x13-x15. No flags change
+        ('xlate', lambda L: f"""
+    stp x14, x15, [sp, #0x10]
+    str x13, [sp, #0x20]
+    adrp x15, {pg(REC1)}
+    ldr x15, [x15, #{lo(REC1)}]
+    sub x15, x17, x15
+    tbnz x15, #63, xl_out
+    lsr x14, x15, #12
+    movz x13, #{NPT}
+    sub x13, x14, x13
+    tbz x13, #63, xl_out
+    adrp x13, {pg(PT)}
+    add x13, x13, #{lo(PT)}
+    ldrb w13, [x13, x14]
+    cbz w13, xl_out
+    sub x13, x13, #1
+    adrp x14, {pg(WIN)}
+    add x14, x14, #{lo(WIN)}
+    add x14, x14, x13, lsl #12
+    and x15, x15, #0xfff
+    add x17, x14, x15
+xl_out:
+    ldr x13, [sp, #0x20]
+    ldp x14, x15, [sp, #0x10]
+    br x16"""),
         ('walk_start', lambda L: f"""
     adr x16, {A(L['anchor'])}
     ldr w17, [x16]
@@ -256,60 +275,54 @@ wc_go:
     cmp x0, x26
     b.lo {A(WALK_DONE)}
     b {A(WALK_NEXT)}"""),
+        # copy main's pages into the window slot by slot (setting the page table for the redirect ones), then put each site's original word back there
         ('shadow_setup', lambda L: f"""
-    stp x29, x30, [sp, #-0x20]!
-    mov x29, sp
-    str x19, [sp, #0x10]
-    mov x1, #2
-    mov x2, #0x8001
-    movk x2, #0xffff, lsl #16
-    mov x3, #0
-    svc #0x29
-    cbnz w0, ss_out
-    mov x19, x1
-    mov x0, x19
-    movz x1, #{win & 0xFFFF}
-    movk x1, #{win >> 16}, lsl #16
-    svc #0x2c
-    cbnz w0, ss_out
-    adr x9, {A(RUNS)}
-    movz w10, #{len(runs)}
-    adr x11, {A(BYTES)}
-    mov w12, #0
-ss_run:
-    ldp w13, w14, [x9], #8
-    add x13, x19, x13
-ss_byte:
-    ldr w15, [x11]
-    lsl w16, w12, #3
-    lsr w15, w15, w16
-    strb w15, [x13], #1
-    add w12, w12, #1
-    cmp w12, #3
-    b.ne ss_next
-    mov w12, #0
-    add x11, x11, #4
-ss_next:
-    subs w14, w14, #1
-    b.ne ss_byte
-    subs w10, w10, #1
-    b.ne ss_run
-    b ss_set
-ss_out:
+    sub sp, sp, #0x30
     adrp x9, {pg(REC1)}
-    ldr x19, [x9, #{lo(REC1)}]
-ss_set:
-    adrp x9, {pg(SHADOW_PTR)}
-    str x19, [x9, #{lo(SHADOW_PTR)}]
-    ldr x19, [sp, #0x10]
-    ldp x29, x30, [sp], #0x20
+    ldr x9, [x9, #{lo(REC1)}]
+    adr x10, {A(PAGES)}
+    adrp x11, {pg(WIN)}
+    add x11, x11, #{lo(WIN)}
+    adrp x12, {pg(PT)}
+    add x12, x12, #{lo(PT)}
+    movz w13, #{len(wpages)}
+    mov w8, #1
+ss_page:
+    ldr w14, [x10], #4
+    and x15, x14, #0xffff
+    tbz w14, #16, ss_copy
+    strb w8, [x12, x15]
+ss_copy:
+    add x14, x9, x15, lsl #12
+    mov w15, #{PAGE // 16}
+ss_cp:
+    ldp x6, x7, [x14], #16
+    stp x6, x7, [x11], #16
+    subs w15, w15, #1
+    b.ne ss_cp
+    add w8, w8, #1
+    subs w13, w13, #1
+    b.ne ss_page
+    adr x10, {A(SITES)}
+    adr x12, {A(ORIG)}
+    movz w14, #{n}
+ss_orig:
+    ldr w15, [x10], #4
+    ldp w6, w7, [x12], #8
+    orr w6, w6, w7, lsl #16
+    add x17, x9, x15
+    adr x16, ss_put
+    b {A(L['xlate'])}
+ss_put:
+    str w6, [x17]
+    subs w14, w14, #1
+    b.ne ss_orig
+    add sp, sp, #0x30
     ret"""),
         ('hook_new', lambda L: f"""
     adrp x9, {pg(REC1)}
     ldr x15, [x9, #{lo(REC1)}]
     sub x10, x0, x15
-    adrp x9, {pg(SHADOW_PTR)}
-    ldr x14, [x9, #{lo(SHADOW_PTR)}]
     adr x11, {A(SITES)}
     mov w12, #0
 hk_loop:
@@ -325,32 +338,21 @@ hk_found:
     adrp x9, {pg(SLOTS)}
     add x9, x9, #{lo(SLOTS)}
     str x1, [x9, x12, lsl #3]
-    cbz x14, hk_ret
-    cmp x14, x15
-    b.eq hk_ret
     ldr w13, [x15, x10]
-    str w13, [x14, x10]
+    add x17, x15, x10
+    sub sp, sp, #0x30
+    adr x16, hk_put
+    b {A(L['xlate'])}
+hk_put:
+    add sp, sp, #0x30
+    sub x9, x17, x15
+    cmp x9, x10
+    b.eq hk_ret
+    str w13, [x17]
 hk_ret:
     adr x0, {A(TRAMPS)}
     add x0, x0, x12, lsl #5
     ret"""),
-        ('xlate', lambda L: f"""
-    stp x14, x15, [sp, #0x10]
-    adrp x15, {pg(REC1)}
-    ldr x15, [x15, #{lo(REC1)}]
-    sub x15, x17, x15
-    tbnz x15, #63, xl_out
-    movz x14, #{MAIN_TEXT & 0xFFFF}
-    movk x14, #{MAIN_TEXT >> 16}, lsl #16
-    sub x14, x15, x14
-    tbz x14, #63, xl_out
-    adrp x14, {pg(SHADOW_PTR)}
-    ldr x14, [x14, #{lo(SHADOW_PTR)}]
-    cbz x14, xl_out
-    add x17, x14, x15
-xl_out:
-    ldp x14, x15, [sp, #0x10]
-    br x16"""),
         ('get_cb', lambda L: f"""
     adr x16, {A(STUBS)}
     sub x20, x19, x16
@@ -420,9 +422,8 @@ gc_noop:
                 raise SystemExit(f'{h["name"]}: displaced {kind} at main+{s:#x} not handled')
         sitebytes += struct.pack('<I', s)
     put(SITES, bytes(sitebytes))
-    put(RUNS, b''.join(struct.pack('<II', o, l) for o, l in runs))
-    st3 = stream + b'\0' * (-len(stream) % 3)
-    put(BYTES, b''.join(struct.pack('<I', st3[j] | st3[j + 1] << 8 | st3[j + 2] << 16) for j in range(0, len(st3), 3)))
+    put(PAGES, b''.join(struct.pack('<I', p | (0x10000 if p in redir else 0)) for p in wpages))
+    put(ORIG, b''.join(struct.pack('<II', w & 0xFFFF, w >> 16) for w in (struct.unpack_from('<I', mimg, s)[0] for s in sites)))
 
     # patch points
     put(0x6e990, asm(f'bl {A(labels["walk_start"])}', A(0x6e990)))
@@ -489,8 +490,8 @@ gc_noop:
     ipsname = f'{MAIN_BUILD_ID}.ips'
     (out / 'subsdk6').write_bytes(sub6)
     (out / ipsname).write_bytes(ips)
-    layout = dict(plugin_from_main=PB, code=CODE, stubs=STUBS, tramps=TRAMPS, sites_table=SITES, runs=RUNS, bytes=BYTES, end=END,
-                  slots=SLOTS, shadow_ptr=SHADOW_PTR, window=win, bss=new_bss, labels=labels, n=n, readset_runs=len(runs), readset_bytes=len(stream),
+    layout = dict(plugin_from_main=PB, code=CODE, stubs=STUBS, tramps=TRAMPS, sites_table=SITES, pages_table=PAGES, orig=ORIG, end=END,
+                  slots=SLOTS, page_table=PT, window=WIN, window_pages=wpages, redirect_pages=sorted(redir), bss=new_bss, labels=labels, n=n,
                   hooks=[dict(name=h['name'], kind=h['kind'], site=h['site'], gate=h['gate']) for h in hooks], displaced=displaced,
                   far=len(far), thunks={hex(k): hex(v) for k, v in thunks.items()}, thunk_end=at)
     (out / 'layout.json').write_text(json.dumps(layout, indent=1))
@@ -502,8 +503,9 @@ gc_noop:
         for f in sorted((mod / 'romfs').rglob('*')):
             if f.is_file(): z.write(f, f'{base}/romfs/{f.relative_to(mod / "romfs").as_posix()}')
         z.writestr(f'atmosphere/exefs_patches/qol-peanuts/{ipsname}', bytes(ips))
-    print(f'subsdk6 at main+{PB:#x}; {n} hooks; {len(far)} far branches; window {win:#x}; read set {len(stream)} bytes in {len(runs)} runs; '
-          f'free run used {CODE:#x}-{END:#x} of {FREE[1]:#x}; bss +{PAGE:#x}')
+    size = (data_end + new_bss + PAGE - 1) & ~(PAGE - 1)
+    print(f'subsdk6 at main+{PB:#x}; {n} hooks; {len(far)} far branches; window {len(wpages)} pages ({len(redir)} redirected) in bss at {WIN:#x}; '
+          f'free run used {CODE:#x}-{END:#x} of {FREE[1]:#x}; {len(thunks)} thunks end at {at:#x}; bss +{new_bss - pinfo["bss"]:#x}; image {size / 2**20:.2f} MiB')
     print(f'displaced PC-relative: {displaced}')
     print(f'wrote {out / "subsdk6"}, {out / ipsname}, {zpath} ({zpath.stat().st_size} bytes)')
 
