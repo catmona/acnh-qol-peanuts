@@ -11,21 +11,28 @@ from unicorn import *
 from unicorn.arm64_const import *
 
 PLUG, MAINF, ROMFS, OUT = sys.argv[1:5]
-plug = bytearray(open(PLUG, 'rb').read())
-main = open(MAINF, 'rb').read()
-
 PAGE = 0x1000
 up = lambda x: (x + PAGE - 1) & ~(PAGE - 1)
+if open(PLUG, 'rb').read(4) == b'NSO0':   # an NSO: its segments and bss give the module's real size, as the console's loader takes it
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import nso
+    _info, plug = nso.load(PLUG); _s = _info['segs']
+    PLUG_TEXT_END, PLUG_RO, PLUG_DATA = up(_s[0]['size']), _s[1]['moff'], _s[2]['moff']
+    PLUG_END = up(_s[2]['moff'] + _s[2]['size'] + _info['bss'])
+else:   # a flat image of QoL Core 1.1.0's subsdk6
+    plug = bytearray(open(PLUG, 'rb').read())
+    PLUG_TEXT_END, PLUG_RO, PLUG_DATA, PLUG_END = 0x94000, 0x94000, 0xad000, 0x215000
+main = open(MAINF, 'rb').read()
 
-# ---- layout (contiguous like Horizon: rtld, main, subsdk0, subsdk6, sdk) ----
+# ---- layout (contiguous like Horizon: rtld, main, subsdk0, subsdk6, sdk; sizes of ACNH 3.0.3's own NSOs, segments and bss on a page) ----
+RTLD_SIZE, SUB0_SIZE = 0x6000, 0x66c000
 RTLD = 0x08000000
-M = RTLD + 0x4000
+M = RTLD + RTLD_SIZE
 MAIN_TEXT_END, MAIN_RO, MAIN_DATA = 0x3f07000, 0x3f07000, 0x4725000
 MAIN_END = 0x5a06000
-main = main[:MAIN_END].ljust(MAIN_END, b'\0')
+main = bytearray(main[:MAIN_END].ljust(MAIN_END, b'\0'))
 SUB0 = M + MAIN_END
-P = SUB0 + 0x4000
-PLUG_TEXT_END, PLUG_RO, PLUG_DATA, PLUG_END = 0x94000, 0x94000, 0xad000, 0x215000
+P = SUB0 + SUB0_SIZE
 SDK = P + PLUG_END
 STUBS = 0x7000000000
 STACK = 0x7100000000; STACK_SIZE = 0x100000
@@ -33,6 +40,40 @@ TLS = 0x7200000000
 HEAP = 0x7300000000; HEAP_SIZE = 0x1000000
 DONE = 0x7400000000
 
+# ---- relocate main and the plugin at their bases (R_RELATIVE: base + addend; symbols: own definitions, else a stub that returns 0) ----
+imports = {}
+def stub_for(name):
+    if name not in imports: imports[name] = STUBS + 0x10 * len(imports)
+    return imports[name]
+def relocate(img, base):
+    mod0 = struct.unpack_from('<I', img, 4)[0]
+    dyn = mod0 + struct.unpack_from('<i', img, mod0 + 4)[0]
+    D = collections.defaultdict(list); o = dyn
+    while True:
+        t, v = struct.unpack_from('<qQ', img, o); o += 16
+        if t == 0: break
+        D[t].append(v)
+    strtab, symtab = D[5][0], D[6][0]
+    def sym(i):
+        nm, info, oth, shn, val, sz = struct.unpack_from('<IBBHQQ', img, symtab + i * 24)
+        return img[strtab + nm:img.index(b'\0', strtab + nm)].decode(), shn, val
+    def rela(off, size):
+        for o in range(off, off + size, 24):
+            r_off, info, add = struct.unpack_from('<QQq', img, o)
+            typ, si = info & 0xffffffff, info >> 32
+            if typ == 1027: v = base + add
+            else:
+                name, shn, val = sym(si)
+                v = (base + val if shn else stub_for(name)) + (0 if typ == 1026 else add)
+            struct.pack_into('<Q', img, r_off, v & 0xffffffffffffffff)
+    if D[7]: rela(D[7][0], D[8][0])
+    if D[23]: rela(D[23][0], D[2][0])
+    if D[36]:   # DT_RELR
+        where_ = None
+        for (v,) in struct.iter_unpack('<Q', bytes(img[D[36][0]:D[36][0] + (D[35][0] & ~7)])):
+            if not v & 1: slots = [v]; where_ = v + 8
+            else: slots = [where_ + 8 * b for b in range(63) if v >> (b + 1) & 1]; where_ += 63 * 8
+            for s_ in slots: struct.pack_into('<Q', img, s_, (struct.unpack_from('<Q', img, s_)[0] + base) & 0xffffffffffffffff)
 uc = Uc(UC_ARCH_ARM64, UC_MODE_ARM)
 uc.ctl_set_cpu_model(UC_CPU_ARM64_MAX) if hasattr(uc, 'ctl_set_cpu_model') else None
 
@@ -42,46 +83,22 @@ def region(addr, size, typ, perm, data=None):
     if data: uc.mem_write(addr, bytes(data[:size]))
     regions.append((addr, size, typ, perm))
 
-def fake_module(base):
-    # minimal module: text page (b +8, MOD0 offset), ro page, data page
+def fake_module(base, size=0x4000):
+    # a module of size bytes holding nothing the plugin uses: text page (b +8, MOD0 offset), ro page, the rest data
     t = bytearray(PAGE)
     struct.pack_into('<II', t, 0, 0x14000002, 0x10)
     t[0x10:0x14] = b'MOD0'
-    region(base, PAGE, 3, 5, t); region(base + PAGE, PAGE, 3, 1); region(base + 2 * PAGE, 2 * PAGE, 4, 3)
+    region(base, PAGE, 3, 5, t); region(base + PAGE, PAGE, 3, 1); region(base + 2 * PAGE, size - 2 * PAGE, 4, 3)
 
-fake_module(RTLD)
+fake_module(RTLD, RTLD_SIZE)
+fake_module(SUB0, SUB0_SIZE)
+
+relocate(main, M)
+relocate(plug, P)
 region(M, MAIN_RO, 3, 5, main)
 region(M + MAIN_RO, MAIN_DATA - MAIN_RO, 3, 1, main[MAIN_RO:])
 region(M + MAIN_DATA, MAIN_END - MAIN_DATA, 4, 3, main[MAIN_DATA:])
-fake_module(SUB0)
 
-# ---- plugin: relocate ----
-mod0 = struct.unpack_from('<I', plug, 4)[0]
-dyn = mod0 + struct.unpack_from('<i', plug, mod0 + 4)[0]
-D = collections.defaultdict(list); o = dyn
-while True:
-    t, v = struct.unpack_from('<qQ', plug, o); o += 16
-    if t == 0: break
-    D[t].append(v)
-strtab, symtab = D[5][0], D[6][0]
-def sym(i):
-    nm, info, oth, shn, val, sz = struct.unpack_from('<IBBHQQ', plug, symtab + i * 24)
-    return plug[strtab + nm:plug.index(b'\0', strtab + nm)].decode(), shn, val
-imports = {}
-def stub_for(name):
-    if name not in imports: imports[name] = STUBS + 0x10 * len(imports)
-    return imports[name]
-def relocs(off, size):
-    for o in range(off, off + size, 24):
-        r_off, info, add = struct.unpack_from('<QQq', plug, o)
-        typ, si = info & 0xffffffff, info >> 32
-        if typ == 1027: v = P + add
-        else:
-            name, shn, val = sym(si)
-            v = (P + val if shn else stub_for(name)) + add
-        struct.pack_into('<Q', plug, r_off, v)
-relocs(D[7][0], D[8][0])
-relocs(D[23][0], D[2][0])
 plug = plug.ljust(PLUG_END, b'\0')
 region(P, PLUG_TEXT_END, 3, 5, plug)
 region(P + PLUG_RO, PLUG_DATA - PLUG_RO, 3, 1, plug[PLUG_RO:])
@@ -167,7 +184,7 @@ def fs_call(name):
 # ---- svc ----
 INFO = {2: 0x1000000000, 3: 0x1000000000, 4: HEAP, 5: HEAP_SIZE, 12: RTLD, 13: 0x7ff8000000,
         14: STACK, 15: 0x10000000, 18: 0x01006F8002326000, 6: 0xCD500000, 7: 0x7a00000, 20: 0}
-threads = {}
+threads = {}; ticks = [0]
 def svc(num):
     if num == 0x27:
         s = rd(X(0), X(1)).decode('utf-8', 'replace').rstrip('\n'); L(s); setX(0, 0); return
@@ -201,7 +218,7 @@ def svc(num):
     if num == 0x21: setX(0, 0); return
     if num == 0x18: setX(0, 0); setX(1, 0); return
     if num == 0x16: setX(0, 0); return
-    if num == 0x1e: setX(0, len(log) * 1000); return
+    if num == 0x1e: ticks[0] += 19200; setX(0, ticks[0]); return   # GetSystemTick: a steady count, so runs repeat (the plugin seeds its address picker from it)
     if num == 0x74:
         rw, h, ro, size = X(0), X(1), X(2), X(3)
         uc.mem_map(rw, size, UC_PROT_ALL); uc.mem_write(rw, rd(ro, size))
@@ -245,11 +262,48 @@ def on_done(uc_, addr, size, ud): uc_.emu_stop()
 uc.hook_add(UC_HOOK_INTR, on_intr)
 uc.hook_add(UC_HOOK_CODE, on_code_stub, begin=STUBS, end=STUBS + 0xffff)
 uc.hook_add(UC_HOOK_CODE, on_main_exec, begin=M, end=M + MAIN_TEXT_END - 1)
-uc.hook_add(UC_HOOK_MEM_READ, on_main_read, begin=M, end=M + MAIN_TEXT_END - 1)
+if os.environ.get('EMU_READS', '0') == '1':   # every read of main's text (slow: millions of them while the plugin checks its sites)
+    uc.hook_add(UC_HOOK_MEM_READ, on_main_read, begin=M, end=M + MAIN_TEXT_END - 1)
 uc.hook_add(UC_HOOK_CODE, on_done, begin=DONE, end=DONE + 3)
 def on_unmapped(uc_, access, addr, size, value, ud):
     L(f'# unmapped access {access} at {addr:#x} size {size} pc={where(uc_.reg_read(UC_ARM64_REG_PC))}'); return False
 uc.hook_add(UC_HOOK_MEM_UNMAPPED, on_unmapped)
+
+# EMU_SITES=file of main offsets (one per line): record each read of those words (and the plugin pc that made it) in site_reads
+site_reads = collections.Counter()
+def on_site_read(uc_, access, addr, size, value, ud):
+    pc = uc_.reg_read(UC_ARM64_REG_PC)
+    site_reads[(addr - M, size, where(pc))] += 1
+if os.environ.get('EMU_SITES'):
+    for _l in open(os.environ['EMU_SITES']):
+        if _l.strip(): _a = M + int(_l, 16); uc.hook_add(UC_HOOK_MEM_READ, on_site_read, begin=_a, end=_a + 3)
+
+# EMU_SHADOW=<flat main>: once FindModules returns, point main's text start in exl's module record (+0x10 of record 1) at an unpatched copy of
+# main's text, mapped read-only elsewhere; calls into that copy are logged (the experiment: do the plugin's reads, targets and calls use that field)
+SHADOW = 0x6000000000
+shadow_exec = collections.Counter()
+if os.environ.get('EMU_SHADOW'):
+    _sh = open(os.environ['EMU_SHADOW'], 'rb').read()[:MAIN_TEXT_END]
+    uc.mem_map(SHADOW, MAIN_TEXT_END, UC_PROT_ALL); uc.mem_write(SHADOW, _sh)
+    def _set_shadow(uc_, addr, size, ud):
+        uc_.mem_write(P + 0x2144f0 + 0x48 + 0x10, struct.pack('<Q', SHADOW))
+    uc.hook_add(UC_HOOK_CODE, _set_shadow, begin=P + 0x6db40, end=P + 0x6db40)
+    def _shadow_exec(uc_, addr, size, ud):
+        shadow_exec[(addr - SHADOW, where(uc_.reg_read(UC_ARM64_REG_LR)))] += 1; ret(0)
+    uc.hook_add(UC_HOOK_CODE, _shadow_exec, begin=SHADOW, end=SHADOW + MAIN_TEXT_END - 1)
+_where0 = where
+def where(a):
+    if SHADOW <= a < SHADOW + MAIN_TEXT_END: return f'shadow+{a - SHADOW:#x}'
+    return _where0(a)
+
+# every hook the plugin installs: exl HookInline (0x79020: target, callback, float context) and HookFunc (0x70a50: target, replacement, trampoline)
+hooks = []
+def on_hook(uc_, addr, size, ud):
+    kind = 'inline' if addr == P + 0x79020 else 'func'
+    h = dict(kind=kind, target=where(X(0)), cb=where(X(1)), flag=X(2) & 0xffffffff, lr=where(uc_.reg_read(UC_ARM64_REG_LR)))
+    if kind == 'func' and h['lr'] == 'plug+0x79084': return   # HookInline's own call of HookFunc
+    hooks.append(h); L(f"# hook {kind} {h['target']} -> {h['cb']} flag={h['flag']} from {h['lr']}")
+for _o in (0x79020, 0x70a50): uc.hook_add(UC_HOOK_CODE, on_hook, begin=P + _o, end=P + _o)
 
 # EMU_PROBE=off,off,...: print x0-x5, x19-x28 and lr each time the plugin reaches one of these offsets
 def on_probe(uc_, addr, size, ud):
@@ -264,6 +318,8 @@ def call(addr, *args, limit=int(os.environ.get("EMU_LIMIT", 200_000_000))):
     uc.reg_write(UC_ARM64_REG_LR, DONE)
     try:
         uc.emu_start(addr, DONE, count=limit)
+        if uc.reg_read(UC_ARM64_REG_PC) != DONE:
+            L(f'# stopped after {limit} instructions at {where(uc.reg_read(UC_ARM64_REG_PC))} lr={where(uc.reg_read(UC_ARM64_REG_LR))} x19={X(19):#x} x20={X(20):#x} x21={X(21):#x}'); notes.append('limit')
     except UcError as e:
         L(f'# emu error {e} at {where(uc.reg_read(UC_ARM64_REG_PC))} lr={where(uc.reg_read(UC_ARM64_REG_LR))}')
         notes.append(str(e))
@@ -282,7 +338,7 @@ def dump(tag):
         return [(hex(a), b.hex()) for a, b in out]
     rep = dict(tag=tag, layout=dict(main=hex(M), plugin=hex(P)), notes=notes,
                main_writes=runs(mw), plugin_writes=runs(pw),
-               main_calls=[(hex(a), w, n) for (a, w), n in sorted(main_calls.items())],
+               hooks=hooks, shadow_exec=[(hex(a), w, n) for (a, w), n in sorted(shadow_exec.items())], site_reads=[(hex(a), n_, w, c) for (a, n_, w), c in sorted(site_reads.items())], main_calls=[(hex(a), w, n) for (a, w), n in sorted(main_calls.items())],
                write_pcs=[(where(a), n) for a, n in sorted(write_pcs.items())],
                main_reads=[(hex(a), s, hex(pc), n) for (a, s, pc), n in sorted(main_reads.items())])
     json.dump(rep, open(f'{OUT}.{tag}.json', 'w'), indent=0)
@@ -291,7 +347,7 @@ def dump(tag):
           f'main calls {len(main_calls)}; main read sites {len(main_reads)}')
 
 if __name__ == '__main__':
-    L(f'# imports: {list(imports)}')
+    L(f'# {len(imports)} imports bound to stubs')
     if os.environ.get('EMU_LOG', '0') == '1': uc.mem_write(P + 0xad00a, b'\x01')  # the plugin's own log switch; on, it breaks hook installs
     call(P + 0x6dbd0)
     dump('init')
