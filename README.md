@@ -6,11 +6,7 @@ A port of Arcusaren's [Quality of Life Enhancements](https://gamebanana.com/mods
 
 The normal Switch version doesn't work on Peanuts. It patches the game while it's running, and Peanuts doesn't let plugins do that. This version does the patching ahead of time instead. You don't need a PC or a game dump to install it: there's a [patcher page](https://catmona.github.io/acnh-qol-peanuts/) that builds the mod zip right in your browser.
 
-![holding Y skips to the next question](docs/img/hold-y.png)
-
 ## Install
-
-<img src="docs/img/patcher-phone.png" alt="patcher page" width="240" align="right">
 
 1. Get **Main download (Modded Switch)** from the mod's [GameBanana page](https://gamebanana.com/mods/727637). Don't unzip it.
 2. Get `qol-peanuts-patch.json` from the [latest release](https://github.com/catmona/acnh-qol-peanuts/releases/latest).
@@ -18,11 +14,11 @@ The normal Switch version doesn't work on Peanuts. It patches the game while it'
 4. In Peanuts, long-press ACNH to open its settings, then go to **Install mod… > Zip file** and pick `qol-enhancements-peanuts.zip`.
 5. Peanuts rebuilds the game with the mod. That took about 5 minutes for me. Then hit Play.
 
+<img src="docs/img/patcher.png" alt="the patcher page after making the zip" width="420">
+
 Peanuts will put a "A module's hooks will not run" warning on the mod. You can ignore it: the hooks are already baked in.
 
 To remove the mod, hit the trash icon next to it and let Peanuts rebuild. If you turned on clam or trash stacking, turn it off and unstack those first. The comments in `pockets.ini` explain why.
-
-<br clear="right">
 
 ![the mod in Peanuts' mod list](docs/img/peanuts-mods.jpg)
 
