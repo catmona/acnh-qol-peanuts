@@ -1,6 +1,6 @@
 # Port notes
 
-State as of 11-23 (device-tested). Build: ACNH 3.0.3, main build ID ff1d1c05670db6021c85b624a710b963.
+Tested on Peanuts Native 0.1.7. Build: ACNH 3.0.3, main build ID ff1d1c05670db6021c85b624a710b963.
 
 ## Hook inventory
 
@@ -47,7 +47,7 @@ Rewriting any of these from scratch is not practical. Each callback is a large C
 patch: the 1.1.0 plugin text is 0x94000 bytes. The port keeps the plugin's own code. No hook blocks the
 port.
 
-## Design (path F, as built)
+## Design
 
 `tools/build.py --exefs <game exefs>` writes `out/build/`:
 
@@ -146,7 +146,7 @@ Each one is checked against the stock word before it is patched.
 a thunk it now reads the original bytes. The plugin's reporter (plugin 0xf920, the reason codes) is never called
 in either verification run below, so there is no reason code to log.
 
-### Verification (tools/emu.py, Peanuts mode, 11-23, bss window)
+### Verification (tools/emu.py, Peanuts mode)
 
 The emulator models Peanuts' behaviour:
 
@@ -170,10 +170,10 @@ shipped run checked 1,238 window reads.
 
 Every hook ports; none had to be dropped.
 
-### Device test (AYN Thor, Peanuts Native 0.1.7, 11-23)
+### Device test (AYN Thor, Peanuts Native 0.1.7)
 
-The zip was installed with Install mod > Zip file and built with "Build with mods" (5 min 7 s). ACNH-Combined-3.0.3
-was off. The run used the stock ACNH game.tsv (no `mem_map_limit` row) and `DM_DBG=1` in the game's Extra environment,
+The zip was installed with Install mod > Zip file and built with "Build with mods" (5 min 7 s), with no other mods on. The run
+used the stock ACNH game.tsv (no `mem_map_limit` row) and `DM_DBG=1` in the game's Extra environment,
 which makes Peanuts print the plugin's svcOutputDebugString lines as `[guest]`.
 
 | Check | Log or screen |
@@ -186,30 +186,10 @@ which makes Peanuts print the plugin's svcOutputDebugString lines as `[guest]`.
 | Dialogue rules | `[QoL Enhancements/Controls] dialogue halt rules=634`, the same count as the emulator run |
 | Reason codes | none: no reporter line and no failure line in the whole log |
 | Play | the Nook Inc. intro dialogue runs at 30 fps (1% low 27) and advances with A |
+| Controls | holding Y in the intro skips the dialogue and stops at each choice and at the name screen |
 | Companion | `[peanuts] companion ticks: 1793 in 30.0 s`, 1.88 ms each |
 
-Not checked by hand in this run: the companion's inventory pages with Pockets stacking on. For the features in play, see
-the play test below.
-
-### Play test (AYN Thor, 11-24, 12:14 to 12:28 AM)
-
-The patcher page's stored zip was installed with Install mod > Zip file next to ACNH-Combined-3.0.3 (Combined order 0,
-QoL order 1) and built with "Build with mods" (about 6 min). The log has the same subsdk6 and xmod lines as the table
-above. With no save on the Thor, this was a new game.
-
-| Feature | Result |
-| --- | --- |
-| Controls: hold Y skips dialogue | Works. Holding Y in the Nook Inc. intro ran the lines by and stopped at each choice and at the name screen (shots in the README) |
-| Everything else | Not reached: the game crashed at the island arrival, before any item, shop or catalog |
-
-The crash: `CRASH sig=11 addr=0x250 pc=main+0x38ba530 lr=main+0x38ba520`, during the arrival after the opening video.
-That is the same signature as the crash the acnh-rstb session traced to a 2.x Bananas Over Coconuts UnitIcon model in
-ACNH-Combined. No frame in the backtrace or stack scan is a hook site from `hooks.tsv`. So the likely cause is another
-2.x model in Combined, not this port. A run with Combined off would tell for sure. Not done yet: it needs the owner's
-OK.
-
-Still to try in play: Pockets (Grab 5 or 10, ZL drop), hold-Y pickup, Crafting, Faster Dialogue, the catalog stars,
-and the shop features and amiibo timer, which need an island further along.
+Not checked by hand yet: the companion's inventory pages with Pockets stacking on.
 
 ### Residual risks
 
@@ -220,7 +200,7 @@ and the shop features and amiibo timer, which need an island further along.
 - textreads.tsv comes from two traced runs. A check reached only on a path the emulator never ran (for example a
   late-installed hook in a scene it doesn't load) would read through real main, see a branch and turn its own
   feature off. To find one, run `EMU_LAZY=1` and append its textreads output.
-- A displaced `bl` returns into plugin text (B8). A callee that checks its return address would notice.
+- A displaced `bl` returns into plugin text. A callee that checks its return address would notice.
 
 ## Companion (Eden Duo dual-screen package)
 

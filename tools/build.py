@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the Peanuts port of QoL Enhancements v1.1.0 (ACNH 3.0.3): a patched subsdk6, the main IPS32 and the mod zip (docs/PORT.md, path F).
+"""Build the Peanuts port of QoL Enhancements v1.1.0 (ACNH 3.0.3): a patched subsdk6, the main IPS32 and the mod zip (docs/PORT.md).
 
 Usage: python -P -E tools/build.py --exefs <game exefs dir: main, subsdk0> [--mod <atmosphere/contents/01006F8002326000>] [--out out/build]
 
