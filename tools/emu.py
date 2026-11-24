@@ -22,18 +22,61 @@ if open(PLUG, 'rb').read(4) == b'NSO0':   # an NSO: its segments and bss give th
 else:   # a flat image of QoL Core 1.1.0's subsdk6
     plug = bytearray(open(PLUG, 'rb').read())
     PLUG_TEXT_END, PLUG_RO, PLUG_DATA, PLUG_END = 0x94000, 0x94000, 0xad000, 0x215000
-main = open(MAINF, 'rb').read()
+if open(MAINF, 'rb').read(4) == b'NSO0':
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import nso
+    main = bytes(nso.load(MAINF)[1])
+else: main = open(MAINF, 'rb').read()
+
+# EMU_PEANUTS=<out/build/layout.json> (with the built subsdk6 and EMU_IPS=<main IPS32>): the host as Peanuts lays it out. No rtld; each module followed by a patch
+# area, so the modules stand farther apart than on the console and the far branches are re-aimed as the loader does (xmod); QueryMemory gives 4 KiB free pages
+# outside the modules; svcMapProcessMemory and the process-handle svcs are placeholders; the alias region is real and svcMapPhysicalMemory maps in it
+PEANUTS = json.load(open(os.environ['EMU_PEANUTS'])) if os.environ.get('EMU_PEANUTS') else None
+GAP = 0x40000 if PEANUTS else 0
+PATCH_AREA = 0x10000
 
 # ---- layout (contiguous like Horizon: rtld, main, subsdk0, subsdk6, sdk; sizes of ACNH 3.0.3's own NSOs, segments and bss on a page) ----
 RTLD_SIZE, SUB0_SIZE = 0x6000, 0x66c000
 RTLD = 0x08000000
-M = RTLD + RTLD_SIZE
+M = RTLD if PEANUTS else RTLD + RTLD_SIZE
 MAIN_TEXT_END, MAIN_RO, MAIN_DATA = 0x3f07000, 0x3f07000, 0x4725000
 MAIN_END = 0x5a06000
 main = bytearray(main[:MAIN_END].ljust(MAIN_END, b'\0'))
-SUB0 = M + MAIN_END
-P = SUB0 + SUB0_SIZE
-SDK = P + PLUG_END
+MAIN_CLEAN_TEXT = bytes(main[:MAIN_TEXT_END])   # before any IPS
+SUB0 = M + MAIN_END + GAP
+P = SUB0 + SUB0_SIZE + GAP
+SDK = P + PLUG_END + GAP
+CONSOLE_P = MAIN_END + SUB0_SIZE   # subsdk6 from main on the console
+
+def b_target(w, o):
+    d = w & 0x3FFFFFF; return o + 4 * (d - ((d & 0x2000000) << 1))
+def b_word(w, frm, to):
+    assert abs(to - frm) < 1 << 27 and not (to - frm) & 3
+    return (w & 0xFC000000) | (((to - frm) >> 2) & 0x3FFFFFF)
+if PEANUTS:
+    # the mod's IPS32 into main (offsets count the NSO header), then each far b in main (the sites) aimed at the plugin's host base
+    # EMU_IPS unset: main stays unpatched (the discovery run: every check passes, so every plugin read of main's text shows up in main_text_reads)
+    ips = open(os.environ['EMU_IPS'], 'rb').read() if os.environ.get('EMU_IPS') else b'IPS32EEOF'; assert ips[:5] == b'IPS32'; o = 5; ips_sites = []
+    while ips[o:o + 4] != b'EEOF':
+        off, n = struct.unpack_from('>IH', ips, o); o += 6
+        main[off - 0x100:off - 0x100 + n] = ips[o:o + n]; o += n; ips_sites.append(off - 0x100)
+    for s in ips_sites:
+        w = struct.unpack_from('<I', main, s)[0]; t = b_target(w, s); assert CONSOLE_P <= t < CONSOLE_P + PLUG_TEXT_END
+        struct.pack_into('<I', main, s, b_word(w, M + s, P + t - CONSOLE_P))
+    # EMU_LAZY=1 (the discovery run): main's text stays as the dump has it and each site gets its IPS word only when the plugin installs that site's hook, which
+    # is what the window shows the plugin on Peanuts; so the plugin's checks pass and every plugin read of main's text shows up in main_text_reads
+    lazy = {s: bytes(main[s:s + 4]) for s in ips_sites} if os.environ.get('EMU_LAZY') else {}
+    for s in lazy: main[s:s + 4] = MAIN_CLEAN_TEXT[s:s + 4]
+    # the plugin's far b / bl, at the console's distance from main, aimed at main's host base
+    n_far = 0
+    for o in range(0, PLUG_TEXT_END, 4):
+        w = struct.unpack_from('<I', plug, o)[0]
+        if w & 0x7C000000 != 0x14000000: continue
+        t = b_target(w, o)
+        if 0 <= t < PLUG_END: continue
+        tm = CONSOLE_P + t; assert 0 <= tm < MAIN_TEXT_END, hex(o)
+        struct.pack_into('<I', plug, o, b_word(w, P + o, M + tm)); n_far += 1
+    print(f'# peanuts layout: main {M:#x}, plugin {P:#x} (main+{P - M:#x}, console main+{CONSOLE_P:#x}); {len(ips_sites)} IPS sites, {n_far} far branches re-aimed', flush=True)
 STUBS = 0x7000000000
 STACK = 0x7100000000; STACK_SIZE = 0x100000
 TLS = 0x7200000000
@@ -90,20 +133,28 @@ def fake_module(base, size=0x4000):
     t[0x10:0x14] = b'MOD0'
     region(base, PAGE, 3, 5, t); region(base + PAGE, PAGE, 3, 1); region(base + 2 * PAGE, size - 2 * PAGE, 4, 3)
 
-fake_module(RTLD, RTLD_SIZE)
+if not PEANUTS: fake_module(RTLD, RTLD_SIZE)
 fake_module(SUB0, SUB0_SIZE)
+def patch_area(end):
+    if PEANUTS: region(end, PATCH_AREA, 4, 5)
+patch_area(SUB0 + SUB0_SIZE)
 
 relocate(main, M)
 relocate(plug, P)
 region(M, MAIN_RO, 3, 5, main)
 region(M + MAIN_RO, MAIN_DATA - MAIN_RO, 3, 1, main[MAIN_RO:])
 region(M + MAIN_DATA, MAIN_END - MAIN_DATA, 4, 3, main[MAIN_DATA:])
+patch_area(M + MAIN_END)
 
 plug = plug.ljust(PLUG_END, b'\0')
 region(P, PLUG_TEXT_END, 3, 5, plug)
 region(P + PLUG_RO, PLUG_DATA - PLUG_RO, 3, 1, plug[PLUG_RO:])
 region(P + PLUG_DATA, PLUG_END - PLUG_DATA, 4, 3, plug[PLUG_DATA:])
+patch_area(P + PLUG_END)
 fake_module(SDK)
+patch_area(SDK + 0x4000)
+ALIAS, ALIAS_SIZE = 0x1000000000, 0x10000000
+alias_maps = []
 uc.mem_map(STUBS, 0x10000, UC_PROT_ALL)
 uc.mem_write(STUBS, b'\xc0\x03\x5f\xd6' * 0x4000)  # ret
 region(STACK, STACK_SIZE, 5, 3)
@@ -193,6 +244,8 @@ def svc(num):
         if a >= 1 << 39:  # past the address space: Horizon reports one Inaccessible region to the top, so a walk wraps to 0 and ends
             uc.mem_write(mi, struct.pack('<QQIIIIII', 1 << 39, (1 << 64) - (1 << 39), 0x10, 0, 0, 0, 0, 0))
             setX(0, 0); setX(1, 0); return
+        if PEANUTS and not any(b <= a < b + s for (b, s, t, p) in regions):   # hle_svc.c: other host memory is reported a 4 KiB free page at a time
+            uc.mem_write(mi, struct.pack('<QQIIIIII', a & ~0xFFF, PAGE, 0, 0, 0, 0, 0, 0)); setX(0, 0); setX(1, 0); return
         info = None; prev_end = 0
         for (b, s, t, p) in sorted(regions):
             if b <= a < b + s: info = (b, s, t, p); break
@@ -210,6 +263,14 @@ def svc(num):
         v = INFO.get(t)
         if v is None: L(f'# GetInfo type {t} sub {sub:#x} -> unknown'); v = 0
         setX(0, 0); setX(1, v); return
+    if PEANUTS and num in (0x74, 0x75, 0x40, 0x8, 0x9, 0x43):   # placeholders on Peanuts: success, no effect
+        L(f'# svc {num:#x} placeholder'); setX(0, 0); return
+    if PEANUTS and num == 0x2C:   # MapPhysicalMemory, mem_map_limit off: any page-aligned range inside the alias region
+        a, size = X(0), X(1)
+        if not size or (a | size) & 0xFFF or not (ALIAS <= a and a + size <= ALIAS + ALIAS_SIZE):
+            L(f'# MapPhysicalMemory {a:#x}+{size:#x} refused'); setX(0, 0xD401); return
+        uc.mem_map(a, size, UC_PROT_READ | UC_PROT_WRITE); alias_maps.append((a, size))
+        L(f'# MapPhysicalMemory {a:#x}+{size:#x}'); setX(0, 0); return
     if num == 0x40: setX(0, 0); setX(1, 0x100); setX(2, 0x101); return
     if num == 0x8: threads[0x200] = (X(1), X(2)); setX(0, 0); setX(1, 0x200); return
     if num == 0x9:
@@ -302,6 +363,7 @@ def on_hook(uc_, addr, size, ud):
     kind = 'inline' if addr == P + 0x79020 else 'func'
     h = dict(kind=kind, target=where(X(0)), cb=where(X(1)), flag=X(2) & 0xffffffff, lr=where(uc_.reg_read(UC_ARM64_REG_LR)))
     if kind == 'func' and h['lr'] == 'plug+0x79084': return   # HookInline's own call of HookFunc
+    if PEANUTS and X(0) - M in lazy: uc_.mem_write(X(0), lazy[X(0) - M])
     hooks.append(h); L(f"# hook {kind} {h['target']} -> {h['cb']} flag={h['flag']} from {h['lr']}")
 for _o in (0x79020, 0x70a50): uc.hook_add(UC_HOOK_CODE, on_hook, begin=P + _o, end=P + _o)
 
@@ -311,6 +373,41 @@ def on_probe(uc_, addr, size, ud):
     L(f'# probe {where(addr)} {regs} lr={where(uc_.reg_read(UC_ARM64_REG_LR))}')
 for _o in filter(None, os.environ.get('EMU_PROBE', '').split(',')):
     _a = P + int(_o, 16); uc.hook_add(UC_HOOK_CODE, on_probe, begin=_a, end=_a)
+
+text_writes = collections.Counter(); text_reads = collections.Counter(); shadow_misses = collections.Counter(); reports = collections.Counter()
+if PEANUTS:
+    INFO[3] = ALIAS_SIZE
+    # anything writing main's text (Peanuts seals it R-X: on the device that is a fault)
+    def on_text_write(uc_, access, addr, size, value, ud): text_writes[(addr - M, where(uc_.reg_read(UC_ARM64_REG_PC)))] += 1
+    uc.hook_add(UC_HOOK_MEM_WRITE, on_text_write, begin=M, end=M + MAIN_RO - 1)
+    # the plugin's reads of the real main's text (through the module start, +0x48): the checks that still see the IPS's branches
+    def on_text_read(uc_, access, addr, size, value, ud):
+        pc = uc_.reg_read(UC_ARM64_REG_PC)
+        if P <= pc < P + PLUG_TEXT_END and not (PEANUTS['code'] <= pc - P < PEANUTS['end']): text_reads[(addr - M, size, pc - P)] += 1
+    uc.hook_add(UC_HOOK_MEM_READ, on_text_read, begin=M, end=M + MAIN_RO - 1)
+    # reads of the window outside the bytes build.py packed (they read zeros)
+    _runs = [struct.unpack_from('<II', plug, PEANUTS['runs'] + 8 * i) for i in range(PEANUTS['readset_runs'])]
+    _have = bytearray(PEANUTS['window'])
+    for _o, _n in _runs: _have[_o:_o + _n] = b'\1' * _n
+    def on_shadow_read(uc_, access, addr, size, value, ud):
+        o = addr - ALIAS
+        if o < len(_have) and not all(_have[o:o + size]): shadow_misses[(o, size, uc_.reg_read(UC_ARM64_REG_PC) - P)] += 1
+    uc.hook_add(UC_HOOK_MEM_READ, on_shadow_read, begin=ALIAS, end=ALIAS + PEANUTS['window'] - 1)
+    # the plugin's reporter (0xf920): who calls it with what
+    def on_report(uc_, addr, size, ud): reports[(where(uc_.reg_read(UC_ARM64_REG_LR)), X(0) & 0xffffffff, X(1) & 0xffffffff)] += 1
+    uc.hook_add(UC_HOOK_CODE, on_report, begin=P + 0xf920, end=P + 0xf920)
+
+def peanuts_report():
+    slots = struct.unpack_from(f'<{PEANUTS["n"]}Q', rd(P + PEANUTS['slots'], 8 * PEANUTS['n']))
+    filled = [h['name'] for h, v in zip(PEANUTS['hooks'], slots) if v]
+    empty = [(h['name'], h['gate']) for h, v in zip(PEANUTS['hooks'], slots) if not v]
+    rec1 = struct.unpack_from('<4Q', rd(P + 0x2144f0 + 0x48, 32))
+    return dict(slots_filled=len(filled), slots_empty=empty, record1=[hex(v) for v in rec1], alias_maps=[(hex(a), hex(s)) for a, s in alias_maps],
+                main_text_writes=[(hex(a), w, n) for (a, w), n in sorted(text_writes.items())],
+                main_text_reads=[(hex(a), s, hex(pc), n) for (a, s, pc), n in sorted(text_reads.items())],
+                shadow_misses=[(hex(a), s, hex(pc), n) for (a, s, pc), n in sorted(shadow_misses.items())],
+                reports=[(w, hex(a0), hex(a1), n) for (w, a0, a1), n in sorted(reports.items())],
+                ips_word_reads=sorted({hex(pc) for (a, s, pc) in text_reads if any(a < w + 4 and w < a + s for w in ips_sites)}))
 
 def call(addr, *args, limit=int(os.environ.get("EMU_LIMIT", 200_000_000))):
     for i, a in enumerate(args): setX(i, a)
@@ -341,6 +438,12 @@ def dump(tag):
                hooks=hooks, shadow_exec=[(hex(a), w, n) for (a, w), n in sorted(shadow_exec.items())], site_reads=[(hex(a), n_, w, c) for (a, n_, w), c in sorted(site_reads.items())], main_calls=[(hex(a), w, n) for (a, w), n in sorted(main_calls.items())],
                write_pcs=[(where(a), n) for a, n in sorted(write_pcs.items())],
                main_reads=[(hex(a), s, hex(pc), n) for (a, s, pc), n in sorted(main_reads.items())])
+    if PEANUTS:
+        rep['peanuts'] = pr = peanuts_report()
+        print(f"## {tag}: slots {pr['slots_filled']}/{PEANUTS['n']} filled; main text writes {len(pr['main_text_writes'])}; plugin reads of real main text "
+              f"{len(pr['main_text_reads'])} (pcs {len({r[2] for r in pr['main_text_reads']})}); window reads outside the read set {len(pr['shadow_misses'])}; "
+              f"reporter calls {sum(r[3] for r in pr['reports'])}; reads of IPS words through real main (pcs) {len(pr['ips_word_reads'])}; record1 {pr['record1']}")
+        open(f'{OUT}.{tag}.textreads.txt', 'w').write(''.join(pc + '\n' for pc in pr['ips_word_reads']))
     json.dump(rep, open(f'{OUT}.{tag}.json', 'w'), indent=0)
     open(f'{OUT}.log', 'w', encoding='utf-8').write('\n'.join(log))
     print(f'## {tag}: main writes {len(mw)} bytes in {len(rep["main_writes"])} runs; plugin writes {len(pw)}; '

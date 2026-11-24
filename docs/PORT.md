@@ -51,35 +51,118 @@ Rewriting any of these from scratch is not practical. Each callback is a large C
 patch: the 1.1.0 plugin text is 0x94000 bytes. The port keeps the plugin's own code. No hook blocks the
 port.
 
-## Design
+## Design (path F, as built)
 
-Peanuts already supports static code mods through xmod:
+`tools/build.py --exefs <game exefs>` writes `out/build/`:
 
-- `dm/tools/xmod.py` and `patch_nso.py --xmod` lay the modules out in console order (rtld, main, subsdk0-9,
-  sdk);
-- the loader re-aims each far `b`/`bl` between modules at the real base.
+- the patched `subsdk6`;
+- `ff1d1c05670db6021c85b624a710b963.ips` (IPS32 for main);
+- `qol-enhancements-peanuts.zip`, laid out as Atmosphère: `atmosphere/contents/01006F8002326000/{exefs,romfs}` and
+  `atmosphere/exefs_patches/qol-peanuts/`. Peanuts' ModImporter reads that layout, and "Build with mods" applies it.
 
-The port uses this support. The plan:
+The zip holds bytes copied from the user's own dump of main (the window's contents, packed in plugin text). Do not
+redistribute it. This repo stores offsets only (docs/readset.tsv, docs/textreads.tsv).
 
-1. **main IPS.** Put `b <stub>` at each of the 148 sites, using the console distance from main to subsdk6
-   (computed from real NSO sizes, as xmod.py does).
-2. **Patched subsdk6.** Bake one stub and one trampoline per site into the plugin's existing text pools
-   (around 0x7a000 and 0x71000). The trampoline's `b site+4` back into main is re-aimed by xmod as well.
-   - Displaced PC-relative instructions (adrp, literal loads, branches) need relocatable forms.
-   - The stub's callback literal is absolute and sits in text, where xmod `ptr` rows cannot go. Patch
-     `exl_inline_hook_impl` (0x7e5b4, float variant 0x7e64c) to read the callback from a per-site data slot
-     instead. Leave a null slot uncalled.
-3. **Neutralise run-time installs.** On Peanuts, svcMapProcessMemory "succeeds" without mapping, so the
-   plugin's alias writes would crash. Patch the installer so it only stores the callback in the site's slot.
-   The write PCs are 0x6fd6c, 0x6ff18, 0x6ff28, 0x70470, 0x70b38, 0x790c4, 0x790cc, 0x790d4 and 0x790d8.
-   The plugin still reads its config and decides which features to hook. A disabled feature leaves its slot
-   null, so its sites pass straight through.
+### Requirement: one Peanuts data row
 
-Still open:
+The shadow window is mapped with svcMapPhysicalMemory in the alias region. Peanuts only allows that with this row in
+`dm/games/01006F8002326000/game.tsv`:
 
-- Peanuts has no rtld module, so check how exlaunch's module walk numbers main there (its module mask is at
-  plugin 0x2144e8; bit0 is rtld, bit1 is main).
-- The emulator places a fake subsdk0 of 0x4000 bytes. Switch it to the real layout before baking.
+```
+mem_map_limit	off
+```
+
+The key already exists, and three games use it. The unmodded game is unaffected: ACNH never calls
+MapPhysicalMemory. Without the row the map fails. The window pointer then falls back to the real main, every
+fingerprint check sees the IPS's branches, the plugin turns its features off, and the game runs without QoL.
+
+### How it works
+
+1. **Main IPS.** A `b stub_i` at each of the 151 hook sites. Distances use the console layout (subsdk6 at
+   main+0x6072000), and the loader re-aims these far branches.
+2. **Module walk.** FindModules starts at main and counts rtld as present. Peanuts has no rtld, but the plugin
+   asserts on it in mem_layout.cpp (plugin 0x6e160). The rtld record is a copy of main's record. The walk stops
+   after the plugin's own record.
+3. **Shadow window** (`shadow_setup`, run at exl init instead of RwPages(main)). It does:
+   1. svcGetInfo(AliasRegionAddress);
+   2. svcMapPhysicalMemory(alias, 0x3f07000), which is all of main's text, committed lazily;
+   3. copies in the original bytes the plugin reads (docs/readset.tsv plus 20 bytes at each site; 271 4 KiB
+      pages, 196 16 KiB host pages, about 3.1 MB resident on the device);
+   4. stores the window's address in SHADOW_PTR.
+4. **Main's record stays real.** The plugin reads main's data through record1 too (for example
+   [base+0x4ab2020] at 0x6bd58), so the record cannot point at the window.
+5. **Load thunks.** Each plugin load that reads a word the IPS changes is a `b` to its own thunk. There are 307 of
+   these, listed in [textreads.tsv](textreads.tsv). The thunk:
+   1. saves x16 and x17;
+   2. puts the load's address in x17;
+   3. calls `xlate`, which moves an address inside main's text into the window and leaves any other address
+      alone;
+   4. runs the original load from [x17];
+   5. restores x16 and x17, skipping a register the load itself wrote;
+   6. applies any writeback and branches back.
+
+   The flags and every other register are untouched, so a following compare or branch behaves as before.
+6. **No code is written to main at run time.**
+   - HookFunc and HookInline (`hook_new`) look up the site and store the callback in SLOTS[i].
+   - They also copy the installed word into the window, so the plugin's "publication" re-read sees the change.
+   - HookFunc returns the site's trampoline.
+   - The inline impls read the callback from SLOTS[i]. An empty slot runs the original code.
+7. **Trampolines** run the displaced instruction and branch back to site+4. The 12 displaced PC-relative
+   instructions are rebuilt:
+   - adrp from record1's start;
+   - b, bl, cbz, tbz and b.cond as far forms.
+
+### Patched plugin words
+
+Each one is checked against the stock word before it is patched.
+
+| Plugin offset | Stock | Now |
+| --- | --- | --- |
+| 0x6e990 | mov x26, #0 | `bl walk_start`: the walk starts at main (far `b main+0` anchor), rtld counted |
+| 0x6ea88 | cmp x0, x26 | `b walk_check`: copy record1 into record0 (rtld); stop after the plugin's record |
+| 0x6db90 | bl RwPages(main) | `bl shadow_setup` |
+| 0x6db94 | bl process-handle setup | nop (svc 0x40/0x8/0x43 are placeholders on Peanuts) |
+| 0x70a20 | pool setup | `ret` (no RwPages pools) |
+| 0x70a50 | HookFunc entry | `b hook_new` |
+| 0x79020 | HookInline entry | `b hook_new` |
+| 0x7e5fc, 0x7e6d8 | ldr x20, [x19, #8] | `bl get_cb` (SLOTS[i]) |
+| the 307 rows of textreads.tsv | a load from main's text | `b` to that load's thunk (above) |
+
+**Checks.** No check is patched to pass. Every fingerprint and instruction check still runs unchanged, but through
+a thunk it now reads the original bytes. The plugin's reporter (plugin 0xf920, the reason codes) is never called
+in either verification run below, so there is no reason code to log.
+
+### Verification (tools/emu.py, Peanuts mode, 11-23)
+
+The emulator models Peanuts' behaviour:
+
+- no rtld;
+- 4 KiB free pages past the arena;
+- main's text is read-only;
+- placeholder svcs;
+- far b/bl re-aimed;
+- an alias window from MapPhysicalMemory.
+
+`EMU_LAZY=1` is the discovery mode. It keeps main clean and writes each IPS word only when its hook is installed,
+which mirrors what the window shows. Its `<out>.<phase>.textreads.txt` gave textreads.tsv, the union of the two
+configs below.
+
+| Config | Slots filled | Main text writes | IPS words read through real main | Window reads outside the read set | Reporter calls |
+| --- | --- | --- | --- | --- | --- |
+| Shipped romfs | 132/151 (19 empty are the Tweaks hooks; tweaks.ini is not shipped) | 0 | 0 | 0 | 0 |
+| tweaks.ini on (every option, both show-off times 1500) | 151/151 | 0 | 0 | 0 | 0 |
+
+Every hook ports; none had to be dropped.
+
+### Residual risks
+
+- The mod needs a Peanuts build that carries the `mem_map_limit` row. Without it, the result is no QoL rather than
+  a crash.
+- textreads.tsv comes from two traced runs. A check reached only on a path the emulator never ran (for example a
+  late-installed hook in a scene it doesn't load) would read through real main, see a branch and turn its own
+  feature off. To find one, run `EMU_LAZY=1` and append its textreads output.
+- A displaced `bl` returns into plugin text (B8). A callee that checks its return address would notice.
+- Not yet run on a device: that needs the parent's OK (the Thor lock).
 
 ## Companion (Eden Duo dual-screen package)
 
