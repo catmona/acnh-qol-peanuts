@@ -1,0 +1,4 @@
+keystone-engine==0.9.2
+capstone>=5,<6
+lz4
+unicorn>=2,<3

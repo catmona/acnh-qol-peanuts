@@ -1,27 +1,48 @@
-# QoL Enhancements for Peanuts Native (ACNH 3.0.3)
+# QoL Enhancements for Peanuts Native
 
-A port of Arcusaren's [Quality of Life Enhancements](https://gamebanana.com/mods/727637) v1.1.0 for
-Animal Crossing: New Horizons 3.0.3 to the Peanuts Native Android host.
+Arcusaren's [Quality of Life Enhancements](https://gamebanana.com/mods/727637) 1.1.0 for Animal Crossing: New Horizons 3.0.3, made to work on Peanuts Native. The stock mod doesn't work there, because Peanuts doesn't let plugins patch the game while it runs.
 
-Status: work in progress.
+> [!NOTE]
+> **How this was made.** Most of this repository - the patcher page, the Python build tools and the docs - was written by Claude (Anthropic) through Claude Code, an AI coding assistant. I direct the work: I decide what gets built, choose between the designs it proposes, and approve each test on my own handheld.
+>
+> **What Claude did:** took apart the mod's Core plugin to find its 151 hooks, designed the port, wrote the tools, the page and the docs, and tested it in an emulator and on my AYN Thor.
+> **What I did:** what to build, the design calls, the go-ahead for every device test, and every release.
+> **What I have not done:** a line-by-line review of the code. There is no automated test suite; [docs/PORT.md](docs/PORT.md) lists the checks that were run.
+>
+> Commits here carry no Claude co-author line, so assume any part of the code may be AI-written. Found a bug? Open an issue.
 
-## Why a port is needed
+## Install
 
-Every feature of the mod runs through its Core module (`exefs/subsdk6`), an
-[exlaunch](https://github.com/shadowninja108/exlaunch) plugin that hooks the game's `main` at run
-time. Peanuts rewrites `main` ahead of time and maps it read-only, and does not implement
-`svcSetProcessMemoryPermission`, so run-time hooks never land. This port bakes the hooks in at build
-time instead:
+1. Download **Main download (Modded Switch)** from the [mod's GameBanana page](https://gamebanana.com/mods/727637).
+2. Download `qol-peanuts-patch.json` from the [latest release](https://github.com/catmona/acnh-qol-peanuts/releases/latest).
+3. Open the [patcher page](https://catmona.github.io/acnh-qol-peanuts/), pick both files and tap **Make the Peanuts zip**. It works on your phone or a PC, and nothing is uploaded.
+4. In Peanuts, open ACNH's settings, then **Install mod… > Zip file** and pick `qol-enhancements-peanuts.zip`. Peanuts rebuilds the game with the mod, which takes about 5 minutes.
 
-- an IPS patch for `main` puts a short jump at each hook site, through a data slot;
-- a patched copy of the Core module fills those slots and keeps its trampolines in its own memory,
-  instead of asking the kernel to remap `main`.
+Peanuts warns that the mod looks like an exlaunch plugin. You can ignore that.
 
-## What this repository contains
+## Status
 
-Only tools and patch descriptions. It does not contain the game's code, the mod's binaries, or any
-part of Peanuts. You supply the mod zip you downloaded from GameBanana; the tools produce a mod zip
-that Peanuts' "Build with mods" accepts.
+Tested on an AYN Thor with Peanuts Native 0.1.7: Core and all seven features load with no errors, and the game runs at its normal 30 fps. The features haven't each been tried in play yet.
+
+## How it works
+
+The mod hooks the game by patching its code at run time. Peanuts compiles the game ahead of time, so those patches never land. This port puts the hooks in at build time instead: an IPS patch for the game's `main`, plus a patched copy of the mod's Core plugin. [docs/PORT.md](docs/PORT.md) has the details.
+
+The patch file holds the game's original instruction at each hook site (604 bytes in all), so it ships in Releases and not in the repository. Arcusaren's files are never redistributed: the page patches your own download.
+
+## Building the patch yourself
+
+You need Python 3.12, `pip install -r requirements.txt`, the Switch download extracted into `in/switch/`, and the exefs (`main` and `subsdk0`) of your own copy of ACNH 3.0.3.
+
+```
+python tools/build.py --exefs <folder with main and subsdk0>
+```
+
+This writes the Peanuts zip, the patch file and the IPS to `out/build/`. The other scripts in `tools/` are the analysis tools behind docs/PORT.md; each one has its usage at the top.
+
+## Credits
+
+Arcusaren for QoL Enhancements, shadowninja108 for exlaunch, and the Peanuts Native authors.
 
 ## License
 

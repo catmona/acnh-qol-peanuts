@@ -5,6 +5,9 @@
 *.nup
 *.dex
 *.apk
+*.ips
+layout.json
+*-patch.json
 *.so
 subsdk*
 main

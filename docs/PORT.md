@@ -17,12 +17,8 @@ offset 0xfd60). It is called from 37 places. Each call passes an array of 0x30-b
 | +0x2c | enabled byte |
 
 `tools/hooks_static.py` decodes them all, and [hooks.tsv](hooks.tsv) holds the result: 152 requests at
-148 distinct main sites.
-
-- All 152 have a name.
-- 143 have a main offset. 6 of those are marked `~`.
-- 133 have a callback.
-- The rest are filled in at run time by the emulator (`tools/emu.py`) or by reading the code.
+151 distinct main sites (two requests share main+0x192a590). Every row has a name, a callback and a main offset.
+The ones the static pass could not resolve were filled in from emulator runs (`tools/emu.py`).
 
 On the plugin side, every hook is an exlaunch inline hook. The site gets `b stub`, and the stub saves the
 registers and calls the callback. A trampoline then runs the displaced instruction and branches back to
@@ -58,10 +54,19 @@ port.
 - the patched `subsdk6`;
 - `ff1d1c05670db6021c85b624a710b963.ips` (IPS32 for main);
 - `qol-enhancements-peanuts.zip`, laid out as Atmosphère: `atmosphere/contents/01006F8002326000/{exefs,romfs}` and
-  `atmosphere/exefs_patches/qol-peanuts/`. Peanuts' ModImporter reads that layout, and "Build with mods" applies it.
+  `atmosphere/exefs_patches/qol-peanuts/`. Peanuts' ModImporter reads that layout, and "Build with mods" applies it;
+- `qol-peanuts-patch.json`, for the patcher page (`docs/index.html`): the 466 runs of bytes (20,010 in all) the build
+  changes in the stock plugin image, the new NSO header, the IPS, and SHA-256s of the stock image and of the output
+  `subsdk6`. build.py checks that the patch rebuilds `subsdk6` byte for byte.
 
-The zip holds a few bytes copied from the user's own dump of main: the 151 original site words and the displaced
-instructions, packed in plugin text. Do not redistribute it. This repo stores offsets only (docs/textreads.tsv).
+The zip and the patch hold 604 bytes copied from the user's own dump of main: the 151 original site words (also the
+displaced instructions), packed in plugin text. The plugin's own signature table covers only 37 of the 151 sites, so
+they can't come from the mod. The patch goes in Releases only; the zip, which also holds Arcusaren's files, is not
+redistributed. This repo stores offsets only (docs/textreads.tsv).
+
+The page applies the patch in the browser: it reads the GameBanana Switch zip, LZ4-decompresses the stock `subsdk6`,
+checks its hash, applies the runs, checks the output hash and writes a stored (uncompressed) zip. Run in Node against
+the real download, its zip has the same 44 entries with the same hashes as build.py's.
 
 ### No Peanuts row needed: the window is in the plugin's bss
 
@@ -70,7 +75,7 @@ An earlier build (07158e2) mapped the window with svcMapPhysicalMemory in the al
 module bss as anonymous, uncommitted pages, so the zip works on stock Peanuts with no host row.
 
 A copy of all of main's text in bss (63 MB) would not fit. Peanuts' SetHeapSize refuses when the module images
-summed, rounded up to 2 MB, leave too little of the app pool (work/src `dm/host/hle_svc.c` 575-590). ACNH's
+summed, rounded up to 2 MB, leave too little of the app pool (Peanuts Native source, `dm/host/hle_svc.c` 575-590). ACNH's
 mem_used (0x7a00000, `dm/games/01006F8002326000/game.tsv`) is the unmodded modules plus 4 MiB
 (`dm/games/profile_guess.py` 466-469), so subsdk6 has 4 MiB to live in. So the window is sparse:
 

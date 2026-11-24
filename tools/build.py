@@ -488,6 +488,21 @@ gc_noop:
     sub6 = bytes(head) + body
 
     ipsname = f'{MAIN_BUILD_ID}.ips'
+    # the patch the web patcher (web/index.html) applies to a stock download: the bytes this build changes in the plugin image, the new header and the
+    # main IPS. It holds the original word at each site (from the game), so it goes in Releases only, never in the repository
+    diff = [o for s in pinfo['segs'] for o in range(s['moff'], s['moff'] + s['size']) if img[o] != stock[o]]
+    runs = []
+    for o in diff:
+        if runs and o - runs[-1][1] < 16: runs[-1][1] = o + 1
+        else: runs.append([o, o + 1])
+    b64 = lambda b: __import__('base64').b64encode(bytes(b)).decode()
+    sha = lambda b: hashlib.sha256(bytes(b)).hexdigest()
+    patch = dict(format=1, tid=TID, plugin_build_id=PLUGIN_BUILD_ID, stock_image_sha256=sha(stock), header=b64(head),
+                 edits=[[a, b64(img[a:e])] for a, e in runs], subsdk6_sha256=sha(sub6), ips_name=ipsname, ips=b64(ips))
+    re_img = bytearray(stock)
+    for a, e in runs: re_img[a:e] = img[a:e]
+    assert bytes(head) + b''.join(re_img[s['moff']:s['moff'] + s['size']] for s in pinfo['segs']) == sub6, 'patch does not rebuild subsdk6'
+    (out / 'qol-peanuts-patch.json').write_text(json.dumps(patch))
     (out / 'subsdk6').write_bytes(sub6)
     (out / ipsname).write_bytes(ips)
     layout = dict(plugin_from_main=PB, code=CODE, stubs=STUBS, tramps=TRAMPS, sites_table=SITES, pages_table=PAGES, orig=ORIG, end=END,
