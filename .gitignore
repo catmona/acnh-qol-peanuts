@@ -1,0 +1,16 @@
+# Never commit game code, the mod's binaries, Peanuts' files or build outputs.
+*.nso
+*.bin
+*.zip
+*.nup
+*.dex
+*.apk
+*.so
+subsdk*
+main
+main.*
+!main.ips.md
+work/
+in/
+out/
+__pycache__/
