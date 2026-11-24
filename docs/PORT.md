@@ -188,13 +188,28 @@ which makes Peanuts print the plugin's svcOutputDebugString lines as `[guest]`.
 | Play | the Nook Inc. intro dialogue runs at 30 fps (1% low 27) and advances with A |
 | Companion | `[peanuts] companion ticks: 1793 in 30.0 s`, 1.88 ms each |
 
-Not checked by hand yet: each feature in play (a held-A run through dialogue, Pockets stacking, the catalog stars),
-and the companion's inventory pages with Pockets stacking on.
+Not checked by hand in this run: the companion's inventory pages with Pockets stacking on. For the features in play, see
+the play test below.
 
-Feature status (11-24): no feature has been tried in play, so the README marks all eight "not checked yet"; Core
-only as "loads". The Thor has no ACNH save (`saves/01006F8002326000` is empty), so a play test means a new game, and
-the shops (Shopping Card, Fitting Room) and the amiibo timer need an island further along. A play test was offered
-on 11-24 at about 12:05 AM and put off by the owner. The page's stored zip has not been installed in Peanuts yet.
+### Play test (AYN Thor, 11-24, 12:14 to 12:28 AM)
+
+The patcher page's stored zip was installed with Install mod > Zip file next to ACNH-Combined-3.0.3 (Combined order 0,
+QoL order 1) and built with "Build with mods" (about 6 min). The log has the same subsdk6 and xmod lines as the table
+above. With no save on the Thor, this was a new game.
+
+| Feature | Result |
+| --- | --- |
+| Controls: hold Y skips dialogue | Works. Holding Y in the Nook Inc. intro ran the lines by and stopped at each choice and at the name screen (shots in the README) |
+| Everything else | Not reached: the game crashed at the island arrival, before any item, shop or catalog |
+
+The crash: `CRASH sig=11 addr=0x250 pc=main+0x38ba530 lr=main+0x38ba520`, during the arrival after the opening video.
+That is the same signature as the crash the acnh-rstb session traced to a 2.x Bananas Over Coconuts UnitIcon model in
+ACNH-Combined. No frame in the backtrace or stack scan is a hook site from `hooks.tsv`. So the likely cause is another
+2.x model in Combined, not this port. A run with Combined off would tell for sure. Not done yet: it needs the owner's
+OK.
+
+Still to try in play: Pockets (Grab 5 or 10, ZL drop), hold-Y pickup, Crafting, Faster Dialogue, the catalog stars,
+and the shop features and amiibo timer, which need an island further along.
 
 ### Residual risks
 
