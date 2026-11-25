@@ -41,7 +41,9 @@ These are the same .ini files as the original mod, one per module, in `atmospher
 
 ## Troubleshooting
 
-I run it on my AYN Thor with Peanuts Native 0.1.7.
+I run it on my AYN Thor with Peanuts Native 0.1.7 and 0.1.8.
+
+On Peanuts 0.1.8, set **Graphics > Frame rate cap** to **Game owned**. With the default 60 fps cap, Peanuts runs its own rewritten copy of the game's code, the mod's hooks never get linked in, and the game crashes at start.
 
 If the patcher says "No Core plugin in that zip" or "This is not QoL Enhancements 1.1.0", you picked the wrong download. You need the Modded Switch one, v1.1.0.
 

@@ -30,6 +30,10 @@ site+4. The original code therefore always runs after the callback.
 `main.changed.tsv` (34,430 rewritten runs). No hook site and no fingerprint window touches a rewritten
 word, so the plugin's own fingerprint checks should pass on Peanuts as they do on console.
 
+Peanuts 0.1.8 needs **Graphics > Frame rate cap = Game owned**. Its default 60 fps cap runs a rewritten main
+without the xmod relink, so the 151 main-to-subsdk6 branches are never set and the game crashes at start. With
+Game owned, QoL runs on 0.1.8 as on 0.1.7: hold-Y skip was checked in game on the Thor.
+
 ## Per-feature verdict
 
 | Module (config) | Hooks (plan site) | Verdict |
