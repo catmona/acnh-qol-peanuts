@@ -2,9 +2,10 @@
 
 ![banner](docs/img/banner-v2.png)
 
-A port of Arcusaren's [Quality of Life Enhancements](https://gamebanana.com/mods/727637) (v1.1.0, ACNH 3.0.3) so it runs on Peanuts Native on Android.
+A port of Arcusaren's [Quality of Life Enhancements](https://gamebanana.com/mods/727637) (v1.1.0, ACNH 3.0.3) so it runs on Peanuts Native on Android. The [patcher page](https://catmona.github.io/acnh-qol-peanuts/) builds it from your own download right in your browser. No PC or game dump needed.
 
-The normal Switch version doesn't work on Peanuts. It patches the game while it's running, and Peanuts doesn't let plugins do that. This version does the patching ahead of time instead. You don't need a PC or a game dump to install it: there's a [patcher page](https://catmona.github.io/acnh-qol-peanuts/) that builds the mod zip right in your browser.
+> [!NOTE]
+> **How this was made:** Claude (Anthropic's AI, through Claude Code) wrote the patcher page, the build tools and the docs. I decided what to build and tested every build on my AYN Thor, but I haven't reviewed the code line by line, so assume any part of it may be AI-written.
 
 ## Features
 
@@ -22,18 +23,20 @@ All of this is Arcusaren's work, I just got it running on Peanuts. If something 
 ## Install
 
 1. Get **Main download (Modded Switch)** from the mod's [GameBanana page](https://gamebanana.com/mods/727637). Don't unzip it.
-2. Get `qol-peanuts-patch.json` from the [latest release](https://github.com/catmona/acnh-qol-peanuts/releases/latest).
-3. Open the [patcher page](https://catmona.github.io/acnh-qol-peanuts/), pick both files and hit **Make the Peanuts zip**.
-4. In Peanuts, long-press ACNH to open its settings, then go to **Install mod… > Zip file** and pick `qol-enhancements-peanuts.zip`.
-5. Peanuts rebuilds the game with the mod. That took about 5 minutes for me. Then hit Play.
+   Want [Jubbsticks' Additions](https://github.com/catmona/acnh-jubbsticks-peanuts) too? Also get `UJAP-BetaRelease-V002-Atmosphere.7z` from the [port's Releases](https://github.com/dragonloverlord/Unnofficial-Jubbsticks-Additions-Port/releases) (read the rules in its README first). Don't extract it.
+2. Open the [patcher page](https://catmona.github.io/acnh-qol-peanuts/), pick your download(s) and hit **Make my Peanuts zips**. The page lists the zips it made, in install order.
+3. In Peanuts, long-press ACNH, then go to **Mods & Cheats > Add > A file** and add each zip in the order the page lists them.
+4. Peanuts rebuilds the game with the mods. That took about 5 minutes for me. Then hit Play.
 
-Peanuts will put a "A module's hooks will not run" warning on the mod. You can ignore it: the hooks are already baked in.
+One of the zips is a small memory fix. Bigger mods like Jubbsticks' Additions need it, so leave it ticked. It's also in the [latest release](https://github.com/catmona/acnh-qol-peanuts/releases/latest) on its own.
+
+Peanuts shows an "A module's hooks will not run" warning under the mod. You can ignore it: the hooks are already baked in.
 
 To remove the mod, hit the trash icon next to it and let Peanuts rebuild. If you turned on clam or trash stacking, turn it off and unstack those first. The comments in `pockets.ini` explain why.
 
-![the mod in Peanuts' mod list](docs/img/peanuts-mods.jpg)
+![QoL, Jubbsticks' Additions, ACNH Combined and the memory fix in Peanuts' mod list](docs/img/peanuts-mods.jpg)
 
-<sub>ACNH-Combined is just another mod I have installed. You don't need it.</sub>
+<sub>My setup. You only need QoL, plus the memory fix if you add bigger mods.</sub>
 
 ## Settings
 
@@ -41,21 +44,17 @@ These are the same .ini files as the original mod, one per module, in `atmospher
 
 ## Troubleshooting
 
-I run it on my AYN Thor with Peanuts Native 0.1.7 and 0.1.8.
+I run it on my AYN Thor with Peanuts Native 0.1.8.
 
-On Peanuts 0.1.8, set **Graphics > Frame rate cap** to **Game owned**. With the default 60 fps cap, Peanuts runs its own rewritten copy of the game's code, the mod's hooks never get linked in, and the game crashes at start. The fix is a one-line Peanuts change. With it, QoL runs at 60 fps (see [docs/PORT.md](docs/PORT.md)).
+Set **Graphics > Frame rate cap** to **Game owned**. At the default 60 fps cap, Peanuts runs its own rewritten copy of the game's code without the mod's hooks, and the game crashes at start. A one-line Peanuts fix is waiting to be merged. With it, QoL runs at 60 fps, alone or with Jubbsticks' Additions and the memory fix (see [PORT.md](docs/PORT.md)).
 
 If the patcher says "No Core plugin in that zip" or "This is not QoL Enhancements 1.1.0", you picked the wrong download. You need the Modded Switch one, v1.1.0.
 
-## About the AI part
-
-Heads up: most of this repo (the patcher page, the build tools and the docs) was written by Claude through Claude Code. I decided what to build, picked between the designs it came up with, and okayed every test on my Thor. I haven't gone through the code line by line, and there's no test suite. [PORT.md](docs/PORT.md) lists the checks that were run. Commits don't have a Claude co-author line, so assume any of it could be AI-written. If something's broken, open an issue.
-
 ## How it works
 
-The original mod hooks the game by patching its code at run time. Peanuts compiles the game ahead of time, so those patches never land. This port puts the hooks in at build time instead: an IPS patch for the game's `main`, plus a patched copy of the mod's Core plugin. Details are in [PORT.md](docs/PORT.md).
+The original mod hooks the game by patching its code while it runs. Peanuts compiles the game ahead of time and doesn't let plugins do that, so those patches never land. This port puts the hooks in at build time instead: an IPS patch for the game's `main`, plus a patched copy of the mod's Core plugin. Details are in [PORT.md](docs/PORT.md).
 
-The patch file has the game's original instructions at each hook site in it (604 bytes in all), so it goes in Releases instead of the repo. None of Arcusaren's files are re-hosted here: the page patches your own download.
+The page loads its patch file from this site by itself. None of Arcusaren's files are re-hosted here: the page patches your own download.
 
 ## Building it yourself
 

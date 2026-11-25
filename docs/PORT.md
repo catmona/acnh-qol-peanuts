@@ -232,6 +232,48 @@ Not checked by hand yet: the companion's inventory pages with Pockets stacking o
   feature off. To find one, run `EMU_LAZY=1` and append its textreads output.
 - A displaced `bl` returns into plugin text. A callee that checks its return address would notice.
 
+## The memory fix
+
+A separate code mod, `acnh-memory-fix-peanuts.zip`, made by `tools/make_memfix.py`. The patcher page offers it next to QoL,
+ticked by default. It is not part of QoL: it fixes a game limit that big romfs mods (Jubbsticks' Additions) run into.
+
+ACNH draws repeated models from a fixed 22 MiB heap named `GfxDrawArrayHeap`. Every new model name that ends up drawn
+(the Jubbsticks port's 25 UnitIcon models) takes another block from it. When it is full, the GPU block allocator returns
+NULL and the game writes through it. That is the title crash `pc=sdk+0x582b2c lr=main+0x151ba24` (a memset of 0x7d000
+bytes through a NULL base). This is game logic, not Peanuts: every size on the path is a constant in the game's code.
+
+The fix is one IPS32 with two words (file offset = main offset + 0x100):
+
+| Site | Vanilla | What it is |
+| --- | --- | --- |
+| main+0x1563ba0 | `mov w0,#0x1600000` | GfxDrawArrayHeap's size, 22 MiB |
+| main+0x404d678 | `0x23d00000` | cScene's size, the fifth entry of the root heap size table |
+
+Both grow by the same amount. GfxDrawArrayHeap sits in Scene, which takes the rest of TaskHeap, which takes the rest of
+cScene. Raising only the draw-array heap (to 64 MiB) moved the crash one heap up: Scene ran out instead
+(`lr=main+0x14c39d0`). Growing cScene by the same amount keeps Scene's free room what it is in vanilla. The memory comes
+from cOthers, which takes the rest of the 3,130 MB app heap. Its only child through title and island load is
+AppStaticHeap (2,015 MB), which leaves about 136 MB unused. Peanuts' own heap probe (`DM_PROBE` on ExpHeap create)
+measured all of these sizes on the Thor.
+
+Results on the Thor (Peanuts 0.1.8, Game owned): QoL plus the full Jubbsticks build (with its 25 icons) crashes at the
+title without the fix. With +42 MiB (GfxDrawArrayHeap 64 MiB) it loads the island. +16 MiB (GfxDrawArrayHeap 38 MiB) loads it too; +8 MiB was not tried. The released fix is +42 MiB,
+to leave room for players with more mods than this set.
+
+The 60 fps crash with QoL and Jubbsticks (`addr=0x30 pc=main+0x38bb0cc`) is the same heap. At main+0x38bb0b4 the game
+asks the heap in x22 for 0x3a38 bytes through its alloc vfunc, gets NULL, and stores at +0x30. That heap's parent is
+Scene, and its name pointer is `main+0x3f816d9`, "GfxDrawArrayHeap". At the 60 fps cap the heap fills even without the
+port's icons. With the fix, QoL, the Jubbsticks build with its 25 icons, ACNH Combined 3.0.3 and the fix load the island
+at the 60 fps cap (variant 60, with the pack's `main.xmod.tsv` copied into `60/` by hand until Peanuts passes `--xmod`)
+with no crash, at 42-49 fps (Nov 25, 12:03 AM). A second boot of the same set at 12:12 AM loaded the island too.
+
+Limits:
+- 3.0.3 only (main build ff1d1c05...). The IPS is keyed to that build id, so it does nothing on another version.
+- It raises a fixed limit; it does not remove it. An island with enough different new models on screen could fill the
+  bigger heap too, and would crash the same way.
+- cOthers' use was measured through title and island load only.
+- Any exefs patch makes Peanuts build a modded variant. With QoL that happens anyway.
+
 ## Companion (Eden Duo dual-screen package)
 
 The companion is compatible in principle:
