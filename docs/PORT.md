@@ -34,6 +34,25 @@ Peanuts 0.1.8 needs **Graphics > Frame rate cap = Game owned**. Its default 60 f
 without the xmod relink, so the 151 main-to-subsdk6 branches are never set and the game crashes at start. With
 Game owned, QoL runs on 0.1.8 as on 0.1.7: hold-Y skip was checked in game on the Thor.
 
+The cause is on the Peanuts side.
+
+- `scripts/pack_android.py` `rewrite_variants()` rewrites main for the 60 fps variant without `--xmod`, so the pack's
+  `60/` folder has no `main.xmod.tsv`. The loader reads the table from that folder when the variant runs.
+- The fix is to pass `xmod_files` into `rewrite_variants()` and add `--xmod` (and the xmod key) for each modded module,
+  as `rewrite()` already does.
+- The variant has the same layout: its rewrite reports the same 151 branches into subsdk6, with none at a rewritten
+  instruction.
+
+QoL has no safe fix of its own. Main has no free space big enough for an indirect jump per hook: its unused padding
+gaps are 12 bytes at most.
+
+Checked against the 60 fps patch, nothing overlaps:
+
+- No hook site, fingerprint window or signature record touches the variant's rewritten code.
+- No hook site word is one of tmouh's 6,810 changes. Two windows share later words with it: UpdatePocketMenu at
+  site+4 and +8, and DialogueAdvanceInput at site+12.
+- Both of those words run after the trampoline returns to main, so the two patches can coexist.
+
 ## Per-feature verdict
 
 | Module (config) | Hooks (plan site) | Verdict |
