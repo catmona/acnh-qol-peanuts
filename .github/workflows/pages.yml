@@ -16,12 +16,11 @@ permissions:
 concurrency:
   group: pages
   cancel-in-progress: true
+# Build and deploy are separate jobs: deploy-pages looked up the artifact 0.3 s after the upload in the same job and
+# found none (3 failed runs on Nov 25), and a second job gives the artifact list time to catch up.
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - name: Add the latest release's patch file
@@ -32,5 +31,12 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: docs
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v4
