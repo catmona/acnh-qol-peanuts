@@ -46,12 +46,13 @@ The cause is on the Peanuts side.
 QoL has no safe fix of its own. Main has no free space big enough for an indirect jump per hook: its unused padding
 gaps are 12 bytes at most.
 
-Checked against the 60 fps patch, nothing overlaps:
+Checked against the 60 fps patch (`tools/check_changed.py` on the variant's `60/main.changed.tsv`, and tmouh's
+6,810 changes), no hook site and no signature record is changed:
 
-- No hook site, fingerprint window or signature record touches the variant's rewritten code.
-- No hook site word is one of tmouh's 6,810 changes. Two windows share later words with it: UpdatePocketMenu at
-  site+4 and +8, and DialogueAdvanceInput at site+12.
-- Both of those words run after the trampoline returns to main, so the two patches can coexist.
+- Two 16-byte windows share later words with tmouh's changes: UpdatePocketMenu at site+4 and +8, and
+  DialogueAdvanceInput at site+12. Neither word is in the plugin's signature table.
+- Both words run after the trampoline returns to main. UpdatePocketMenu's trampoline returns into tmouh's
+  changed word, its first word, which the xmod table allows. So the two patches can coexist.
 
 ## Per-feature verdict
 

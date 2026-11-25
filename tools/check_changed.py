@@ -20,7 +20,7 @@ site_hit = win_hit = 0
 for line in open(sys.argv[2]):
     p = line.rstrip('\n').split('\t')
     if len(p) < 4: continue
-    m = re.search(r'main\+~?(0x[0-9a-f]+)', p[3])
+    m = next(filter(None, (re.fullmatch(r'main\+~?(0x[0-9a-f]+)', c) for c in p[3:])), None)   # docs/hooks.tsv has the target in column 5
     if not m: continue
     t = int(m.group(1), 16)
     h4, h16 = hits(t, 4), hits(t, 16)
