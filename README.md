@@ -48,6 +48,8 @@ I run it on my AYN Thor with Peanuts Native 0.1.8.
 
 Set **Graphics > Frame rate cap** to **Game owned**. At the default 60 fps cap, Peanuts runs its own rewritten copy of the game's code without the mod's hooks, and the game crashes at start. A one-line Peanuts fix is waiting to be merged. With it, QoL runs at 60 fps, alone or with Jubbsticks' Additions and the memory fix (see [PORT.md](docs/PORT.md)).
 
+At 60 fps, a mod's `Pack/StaticParam.pack` is hidden by Peanuts' own 60 fps copy. With ACNH Combined, that means no river hopping without a pole. `tools/merge_60_pack.py` builds a 60 fps pack that keeps the mod's changes (see [PORT.md](docs/PORT.md#river-hop-at-60-fps-the-variants-romfs-hides-acnh-combineds-pack)).
+
 If the patcher says "No Core plugin in that zip" or "This is not QoL Enhancements 1.1.0", you picked the wrong download. You need the Modded Switch one, v1.1.0.
 
 ## How it works
