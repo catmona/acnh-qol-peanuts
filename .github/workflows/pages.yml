@@ -23,6 +23,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true   # docs/rstb: ACNH RSTB Fixer, the size table code the page loads
       - name: Add the latest release's patch file
         env:
           GH_TOKEN: ${{ github.token }}

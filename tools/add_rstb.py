@@ -2,7 +2,7 @@
 
     python tools/add_rstb.py <vanilla ResourceSizeTable.srsizetable> [--patch docs/qol-peanuts-patch.json]
 
-The page starts the size table it writes from this one (docs/qol.js, sizeTable). The table is game data, so like the rest
+The page starts the size table mod it makes from this one (docs/qol.js baseTable, then ACNH RSTB Fixer in docs/rstb). The table is game data, so like the rest
 of the patch file it goes in Releases only, never in the repository. build.py --rstb does the same for a fresh build.
 The table is taken from your own 3.0.3 romfs (System/Resource/), unchanged, and must match 3.0.3's hash.
 """
