@@ -17,8 +17,7 @@ const MODS = {
                get <b>Main download (Modded Switch)</b> (<code>qol-switch-v1_1_0-acnh-v3_0_3.zip</code>). Don't unzip it.`,
          want: 'Want QoL Enhancements too?' },
   jub: { name: "Jubbsticks' Additions", global: 'JUB', zip: 'jubbsticks-additions-peanuts.zip', engine: '/acnh-jubbsticks-peanuts/engine.js',
-         patchLocal: 'jub-port-patch.json', patchAbs: '/acnh-jubbsticks-peanuts/jub-port-patch.json', patchName: 'jub-port-patch.json',
-         patchPage: 'https://github.com/catmona/acnh-jubbsticks-peanuts/releases/latest',
+         patchLocal: null, patchAbs: null, patchName: null, patchPage: null,   // the Jubbsticks engine needs no patch file
          get: `<b>Jubbsticks' Additions port</b>: on the port's <a href="https://github.com/dragonloverlord/Unnofficial-Jubbsticks-Additions-Port/releases" target="_blank" rel="noopener">Releases page</a>
                get <code>UJAP-BetaRelease-V002-Atmosphere.7z</code>. Read the rules in its README first, and don't extract the file.`,
          want: "Want Jubbsticks' Additions too?" },
