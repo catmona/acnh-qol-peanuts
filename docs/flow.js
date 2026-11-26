@@ -90,7 +90,8 @@ $('flow').innerHTML = `
         ${patchBox(SELF)}${patchBox(OTHER)}
         <details class="others" id="others-box" hidden>
           <summary>Using other mods too (like ACNH Combined)?</summary>
-          <p>Pick their .zip or .7z files here, so the size table also covers the sizes they raised. Install the zips from this page
+          <p>Pick their .zip or .7z files here too. The game only uses one size table, the first-installed mod's, so the one this page
+            makes has to cover them as well, or their bigger files can crash the game. Install the zips from this page
             <b>before</b> your other mods: Peanuts uses the first-installed mod's copy of a file and has no reorder, so reinstall the others after.</p>
           <label class="pick"><input class="sr" type="file" id="others" accept=".7z,.zip" multiple>
             <span class="pill">Pick other mods</span><span class="fname" id="others-name">None</span></label>
@@ -176,7 +177,7 @@ const render = () => {
   $('rows').innerHTML = rows.map(r => `<li class="row ${r.cls}">${r.cls === 'ok' ? '&#10003; ' : r.cls === 'bad' ? '&#10007; ' : ''}${esc(r.text)}<small>${esc(r.sub)}</small></li>`).join('');
   $('step-2').classList.toggle('done', !!Object.keys(picked).length);
   $('go').disabled = !Object.keys(picked).length || !!$('go').dataset.busy;
-  $('others-box').hidden = !picked.jub;
+  $('others-box').hidden = !Object.keys(picked).length;
   $('files-pill').textContent = Object.keys(picked).length ? 'Pick more' : 'Pick downloads';
 };
 const status = (t, cls) => { $('status').textContent = t; $('status').className = cls || ''; };
@@ -204,17 +205,21 @@ $('others').onchange = () => { const f = [...$('others').files]; $('others-name'
 // ---- make everything
 $('go').onclick = async () => {
   $('go').dataset.busy = '1'; render(); $('results').hidden = true;
-  const outs = [], fix = $('fix').checked;
+  const outs = [], made = {}, fix = $('fix').checked;
   try {
-    for (const k of ORDER) {
+    const others = [];
+    for (const f of $('others').files) others.push({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
+    // Made last-first: Peanuts uses the first-installed zip's size table, so QoL's (the first) is made after the
+    // Jubbsticks zip and covers it and the other mods. The Jubbsticks zip keeps its own table for when it is used alone.
+    for (const k of [...ORDER].reverse()) {
       if (!picked[k]) continue;
       status(`Making ${MODS[k].zip}…`); await tick();
       const [eng, patch] = await Promise.all([engineOf(k), patchOf(k)]);
-      const others = [];
-      if (k === 'jub') for (const f of $('others').files) others.push({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
-      const r = await eng.make(new Uint8Array(await picked[k].file.arrayBuffer()), patch, { fix, others });
-      outs.push({ name: MODS[k].zip, blob: r.zip, note: r.note });
+      const later = ORDER.slice(ORDER.indexOf(k) + 1).filter(j => made[j]);
+      const withLater = [...await Promise.all(later.map(async j => ({ name: MODS[j].zip, bytes: new Uint8Array(await made[j].zip.arrayBuffer()) }))), ...others];
+      made[k] = await eng.make(new Uint8Array(await picked[k].file.arrayBuffer()), patch, { fix, table: true, others: withLater });
     }
+    for (const k of ORDER) if (made[k]) outs.push({ name: MODS[k].zip, blob: made[k].zip, note: made[k].note });
     if (fix) { const own = window[MODS[SELF].global]; outs.push({ name: own.MEMFIX.name, blob: own.memFixZip(), note: 'Gives the game more room for item pictures.' }); }
     $('out').innerHTML = outs.map((o, i) => `<li><span><b>${esc(o.name)}</b><small>${mb(o.blob.size)}. ${esc(o.note)}</small></span>
         <button class="dlb" data-i="${i}">Download</button></li>`).join('') + '<li class="more"><span><b>Then any other mods you use</b></span></li>';

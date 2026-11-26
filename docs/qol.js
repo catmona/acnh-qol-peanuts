@@ -74,7 +74,48 @@ const hex = b => Array.from(new Uint8Array(b), x => x.toString(16).padStart(2, '
 const sha256 = async u => hex(await crypto.subtle.digest('SHA-256', u));
 const unb64 = s => Uint8Array.from(atob(s), ch => ch.charCodeAt(0));
 
-async function build(modBytes, patch) {
+// The size table code (ACNH RSTB Fixer's lib, docs/rstb-lib.js), loaded next to this file the first time a table is made.
+// The Jubbsticks page loads this file from the QoL site, so the path comes from this script's own URL.
+const HERE = typeof document !== 'undefined' && document.currentScript ? document.currentScript.src : '';
+let lib = null;
+const rstbLib = () => lib || (lib = typeof module !== 'undefined' ? Promise.resolve(require('./rstb-lib.js'))
+  : globalThis.RSTB ? Promise.resolve(globalThis.RSTB)
+  : new Promise((res, rej) => {
+      const s = document.createElement('script'); s.src = new URL('rstb-lib.js', HERE || location.href).href;
+      s.onload = () => res(globalThis.RSTB);
+      s.onerror = () => { lib = null; rej(new Error("I couldn't load the size table part of this page. Check your connection.")); };
+      document.head.append(s);
+    }));
+
+// ResourceSizeTable.srsizetable for the zip. The game refuses a file bigger than its entry, and QoL's layouts are bigger
+// than vanilla's (LBellCounterRT needs 472,256 bytes, vanilla allows 77,952). Peanuts takes the table, like every file,
+// from the first-installed mod, and QoL goes first, so this one table must also fit the mods installed after it
+// ('others': [{ name, bytes }] zips or 7z files, the Jubbsticks zip among them). Base: vanilla 3.0.3's table from the
+// patch file, then each mod's own table merged in at the larger size; every romfs file is sized by the fixer's rules,
+// entries are only raised, and geometry models in these mods lose their entry so the game sizes them.
+async function sizeTable(own, patch, others) {
+  const L = await rstbLib(), mods = [{ name: 'QoL Enhancements', files: new Map(own.map(([p, d]) => [p, async () => d])) }];
+  for (const x of others) {
+    const u = x.bytes;
+    try { mods.push({ name: x.name, files: u[0] === 0x37 && u[1] === 0x7A ? await L.read7z(u) : await L.readZip(u) }); }
+    catch (e) { throw new Error(`${x.name}: ${e.message}`); }
+  }
+  let base = null;
+  if (patch.rstb) {
+    base = unb64(patch.rstb.data);
+    if (await sha256(base) !== patch.rstb.sha256) throw new Error('The size table in the patch file came out wrong. Please open an issue.');
+  } else if (!mods.some(m => [...m.files.keys()].some(n => L.romfsPath(n) === L.TABLE)))
+    return { bytes: null, note: 'No size table: this patch file is older than the page' };
+  const r = await L.rebuild(mods, base, d => L.fzstd.decompress(d));
+  const n = a => r.rows.filter(x => x.action === a).length, fmt = x => x.toLocaleString('en-US');
+  const parts = [`${fmt(n('raised') + n('added'))} sizes raised`, n('removed') && `${fmt(n('removed'))} model entries left to the game`].filter(Boolean);
+  return { bytes: r.table, rows: r.rows, notes: r.notes, entries: r.entries,
+           note: `Size table: ${parts.join(', ')}` + (others.length ? `, covers ${others.map(x => x.name).join(', ')}` : '') };
+}
+
+// o.table: also write the size table (the page's flow asks for it and passes the later mods as o.others). Without it the zip
+// has no table, as before: an older flow builds QoL before Jubbsticks, and a QoL table made without the port's sizes would hide them.
+async function build(modBytes, patch, o = {}) {
   if (patch.format !== 1 || patch.tid !== TID) throw new Error('That is not the qol-peanuts-patch.json file.');
   const files = await readZip(modBytes);
   const core = [...files.keys()].find(n => n.endsWith(`atmosphere/contents/${TID}/exefs/subsdk6`));
@@ -104,8 +145,17 @@ async function build(modBytes, patch) {
   entries.push([`${out}/exefs/main.npdm`, await npdm()]);
   const romfs = [...files.keys()].filter(n => n.startsWith(base + 'romfs/')).sort();
   for (const n of romfs) entries.push([`${out}/${n.slice(base.length)}`, await files.get(n)()]);
+  let table = null;
+  if (o.table) {
+    table = await sizeTable(entries.filter(([p]) => p.startsWith(`${out}/romfs/`)), patch, o.others || []);
+    if (table.bytes) {   // replaces a table the mod shipped (already merged in)
+      const at = `${out}/romfs/System/Resource/ResourceSizeTable.srsizetable`, i = entries.findIndex(([p]) => p === at);
+      if (i >= 0) entries.splice(i, 1);
+      entries.push([at, table.bytes]);
+    }
+  }
   entries.push([`atmosphere/exefs_patches/qol-peanuts/${patch.ips_name}`, unb64(patch.ips)]);
-  return { zip: writeZip(entries), romfs: romfs.length };
+  return { zip: writeZip(entries), romfs: romfs.length, table };
 }
 
 
@@ -127,9 +177,12 @@ async function check(modBytes, patch) {
 }
 
 // What the page calls: one zip out.
-const make = async (modBytes, patch) => { const r = await build(modBytes, patch); return { zip: r.zip, note: `${r.romfs} files` }; };
+const make = async (modBytes, patch, o = {}) => {
+  const r = await build(modBytes, patch, o);
+  return { zip: r.zip, note: `${r.romfs} files` + (r.table ? `. ${r.table.note}` : '') };
+};
 
-const api = { build, check, make, MEMFIX, memFixZip, writeZip, lz4, readZip };
+const api = { build, check, make, sizeTable, rstbLib, MEMFIX, memFixZip, writeZip, lz4, readZip };
 globalThis.QOL = api;
 if (typeof module !== 'undefined') module.exports = api;
 })();

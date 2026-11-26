@@ -25,6 +25,7 @@ All of this is Arcusaren's work, I just got it running on Peanuts. If something 
 1. Get **Main download (Modded Switch)** from the mod's [GameBanana page](https://gamebanana.com/mods/727637). Don't unzip it.
    Want [Jubbsticks' Additions](https://github.com/catmona/acnh-jubbsticks-peanuts) too? Also get `UJAP-BetaRelease-V002-Atmosphere.7z` from the [port's Releases](https://github.com/dragonloverlord/Unnofficial-Jubbsticks-Additions-Port/releases) (read the rules in its README first). Don't extract it.
 2. Open the [patcher page](https://catmona.github.io/acnh-qol-peanuts/), pick your download(s) and hit **Make my Peanuts zips**. The page lists the zips it made, in install order.
+   Using other mods that change game files, like ACNH Combined? Pick them under **Using other mods too** as well, so the zip's size table covers them (see [Size table](#size-table)).
 3. In Peanuts, long-press ACNH, then go to **Mods & Cheats > Add > A file** and add each zip in the order the page lists them.
 4. Peanuts rebuilds the game with the mods. That took about 5 minutes for me. Then hit Play.
 
@@ -41,6 +42,25 @@ To remove the mod, hit the trash icon next to it and let Peanuts rebuild. If you
 ## Settings
 
 These are the same .ini files as the original mod, one per module, in `atmosphere/contents/01006F8002326000/romfs/qol-enhancements/config/` inside the zip. Every option has a comment above it, and `enabled = false` turns a module off. Edit them before you install.
+
+## Size table
+
+The game keeps a table of how much memory each file may use (`romfs/System/Resource/ResourceSizeTable.srsizetable`) and refuses any file bigger than its entry. QoL's 7 layout files are all bigger than their vanilla 3.0.3 entries. `LBellCounterRT` needs 472,256 bytes, and vanilla allows 77,952. Peanuts uses only one table, the first-installed mod's, and QoL goes first.
+
+So the page writes that table into the QoL zip by itself, with the code and rules from ACNH RSTB Fixer (same author, copied unchanged into `docs/rstb-lib.js`):
+
+1. It starts from vanilla 3.0.3's table, which comes with the patch file. Then it adds the tables of the mods installed after QoL (the Jubbsticks zip the page made, and anything under "Using other mods too"), taking the larger size where they differ.
+2. It sizes every game file in the QoL zip and in those mods by the fixer's rules (messages n + 512, texture-only models n + 9,248 + 16 per texture, layouts n + 8,192 + 512, fonts n + 8,192, sound banks n + 712 + 64, data files and flows n + 416 + 32, where n is the file's size rounded up to 32). Each rule matches or beats every vanilla 3.0.3 entry. Entries are only raised, never lowered.
+3. A model with geometry loses its entry, so the game sizes it itself. This happens only for models those mods include. QoL has none, so this only comes up with Jubbsticks' Additions or other mods.
+
+The page makes the zips last-first so the QoL zip's table can cover the ones installed after it. A mod you install later but don't pick on the page isn't covered: Peanuts uses QoL's table, so that mod's own raised sizes are lost. A patch file from before this change has no vanilla table, and then the zip gets no table, as before.
+
+Checked: `node tools/check_rstb.mjs` builds the zip with the page's code and reads the table back out. Every file must fit its entry, every geometry model must have none, and no vanilla or mod entry may come out smaller. That passed for QoL alone (7 raised, 64,674 entries) and for QoL with the Jubbsticks zip and ACNH Combined (9 raised, 754 model entries left to the game). Chrome builds the same zip, byte for byte.
+
+Not yet checked:
+- In game, none of this: no table from the page has been run on the Thor yet. The fixer's rebuilt Jubbsticks table passed boot, island load, walking outdoors and the new-save intro (Nov 25). One model with a removed entry has been checked in game, the flimsy fishing rod (Nov 26).
+- The other removed model entries (fruit, the tool ring and cooking menu, the other wooden tools, pansies, roses, the Roost). The fixer's README lists them.
+- Whether the game really refuses QoL's bigger layouts without the table. QoL has run on the Thor without one, but PORT.md doesn't record those screens being opened (the catalog buttons, the tailor and Nook's Cranny counters, the bell counter).
 
 ## Troubleshooting
 
@@ -66,7 +86,16 @@ You need Python 3.12, `pip install -r requirements.txt`, the Switch download ext
 python tools/build.py --exefs <folder with main and subsdk0>
 ```
 
-That writes the Peanuts zip, the patch file and the IPS to `out/build/`. The other scripts in `tools/` are what I used for the analysis in PORT.md. Each one has its usage at the top.
+That writes the Peanuts zip, the patch file and the IPS to `out/build/`. Add `--rstb <your romfs/System/Resource/ResourceSizeTable.srsizetable>` to put vanilla's size table in the patch file, or add it to an existing patch file with `python tools/add_rstb.py <table> --patch <file>`. Without it the page writes no table. The zip `build.py` writes has no table: use the page, or ACNH RSTB Fixer on it.
+
+To check the table the page writes:
+
+```
+node tools/check_rstb.mjs <qol-switch-v1_1_0-acnh-v3_0_3.zip> [--vanilla <table>] [jubbsticks-additions-peanuts.zip] [other mods...]
+python tools/vendor_rstb.py --check
+```
+
+The second one fails if `docs/rstb-lib.js` no longer matches acnh-rstb-fixer next to this repo. Run `python tools/vendor_rstb.py` to update it. The other scripts in `tools/` are what I used for the analysis in PORT.md. Each one has its usage at the top.
 
 ## Credits
 
