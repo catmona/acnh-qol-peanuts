@@ -60,6 +60,45 @@ Checked against the 60 fps patch (`tools/check_changed.py` on the variant's `60/
 - Both words run after the trampoline returns to main. UpdatePocketMenu's trampoline returns into tmouh's
   changed word, its first word, which the xmod table allows. So the two patches can coexist.
 
+### River hop at 60 fps: the variant's romfs hides ACNH-Combined's pack
+
+At 60 fps the no-pole river hop stopped at the bank (2 runs). At Game owned it crossed 3 times in a row. QoL was
+not the cause. The variant boots with `DM_ROMFS_OVERLAY` set to `<pack>/60/romfs` first, then the mods, and the
+first folder that has a file wins. `60/romfs/Pack/StaticParam.pack` is tmouh's 60 FPS pack, so it hides
+ACNH-Combined's River Hopping pack. River Hopping's one real change is `Param/Actor/PlayerActor.byml`
+`/fc17d602/820bacac` 35.0 to 100.0, the widest gap the player hops. Without it the hop needs a pole.
+
+`tools/merge_60_pack.py` does a three-way merge (vanilla, variant, mod) of the BYML scalars. It ports every value
+a mod changed, unless the variant changed the same one, and patches the 4-byte values in place, so the SARC
+layout stays the same. On this set it ports the one value, finds no clashes, and skips 4 float drifts under 0.1%.
+The output differs from tmouh's pack by one byte.
+
+```
+python tools/merge_60_pack.py StaticParam.pack.vanilla <pack>/60/romfs/Pack/StaticParam.pack merged.pack \
+    <ACNH-Combined>/romfs/Pack/StaticParam.pack
+```
+
+The merged pack replaces `60/romfs/Pack/StaticParam.pack` by hand, as the xmod table does. A Peanuts rebuild
+rewrites that folder, so run it again after one. With the merged pack, the same route hops the river at 60 fps
+(`docs/img/60fps/river-hop.jpg`, top row; the bottom row is the original pack, same spot). The real fix is in
+Peanuts: the variant's romfs should merge with, or at least warn about, a mod file it hides.
+
+### Other features at 60 fps
+
+QoL knows the update rate: its log reads `update rate=60 Hz; verified SpeedFix=1` at 60 fps and `30 Hz;
+SpeedFix=0` at Game owned, and it scales its own frame counts.
+
+| Feature | At 60 fps |
+| --- | --- |
+| Mod data (Jubbsticks, ACNH-Combined) | Only `StaticParam.pack` is hidden (fixed above). No mod ships the variant's 3 bcsv files. |
+| River hop, auto ladder and vault | Hop fixed above. The "native hop timer" uses the game's own timers, which tmouh scales together. |
+| Amiibo scan timeout | Still 5 minutes: the log reads `frames=18000`. Without QoL, the game's own 450-frame scan halves to 7.5 s (tmouh did not double it). |
+| Faster dialogue (base 2, boost 4) | Multiplies the game's rate, so it scales tmouh's halved rate. |
+| Auto swim, traversal swap, catch and dig, drag pickup, hold-select | Timed by the system tick (real time) or the update rate. |
+| Crafting quantity ramp | Counts 60 updates, so it reaches 6x in 1 s instead of 2 s. Faster, harmless. |
+| Pockets | Checked on the Thor: open, cursor, the Grab 1/5/10 menu, close (`docs/img/60fps/pockets.jpg`). |
+| Hold-Y dialogue skip | Not checked in game at 60 fps (no villager awake). The shared word runs after the trampoline returns (above). |
+
 ## Per-feature verdict
 
 | Module (config) | Hooks (plan site) | Verdict |

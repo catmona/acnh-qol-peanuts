@@ -1,0 +1,3 @@
+[submodule "docs/rstb"]
+	path = docs/rstb
+	url = https://github.com/catmona/acnh-rstb-fixer.git

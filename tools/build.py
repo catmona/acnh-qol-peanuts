@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Build the Peanuts port of QoL Enhancements v1.1.0 (ACNH 3.0.3): a patched subsdk6, the main IPS32 and the mod zip (docs/PORT.md).
 
-Usage: python -P -E tools/build.py --exefs <game exefs dir: main, subsdk0> [--mod <atmosphere/contents/01006F8002326000>] [--out out/build]
+Usage: python -P -E tools/build.py --exefs <game exefs dir: main, subsdk0> [--rstb <romfs System/Resource/ResourceSizeTable.srsizetable>]
+       [--mod <atmosphere/contents/01006F8002326000>] [--out out/build]
+--rstb puts vanilla 3.0.3's size table in the patch file (tools/add_rstb.py), so the page can write the zip's table.
 
 What it does to the plugin (offsets are subsdk6's; every patched word is checked against the stock one first):
 - FindModules starts its QueryMemory walk at main (a far `b main+0` anchor that the loader re-aims) and counts rtld as present. It stops once it has recorded the
@@ -146,9 +148,15 @@ def decode_branch(w, at):
     return None
 
 
+def auto_swim_off(ini):
+    """docs/qol.js autoSwimOff: with auto_swim on, the character can't swim at the surface after a dive, so the zip has it off"""
+    return re.sub(rb'(?m)^auto_swim[ \t]*=[ \t]*true\b', b"# Off in the Peanuts port: when on, you can't swim at the surface after a dive.\nauto_swim = false", ini, count=1)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--exefs', required=True, help="the game's exefs (main and subsdk0, ACNH 3.0.3): read here, never copied into the repo")
+    ap.add_argument('--rstb', help="the game's own ResourceSizeTable.srsizetable (3.0.3, romfs System/Resource/) for the patch file")
     ap.add_argument('--mod', default=str(REPO / f'in/switch/atmosphere/contents/{TID}'))
     ap.add_argument('--out', default=str(REPO / 'out/build'))
     a = ap.parse_args()
@@ -499,6 +507,9 @@ gc_noop:
     sha = lambda b: hashlib.sha256(bytes(b)).hexdigest()
     patch = dict(format=1, tid=TID, plugin_build_id=PLUGIN_BUILD_ID, stock_image_sha256=sha(stock), header=b64(head),
                  edits=[[a, b64(img[a:e])] for a, e in runs], subsdk6_sha256=sha(sub6), ips_name=ipsname, ips=b64(ips))
+    if a.rstb:
+        from add_rstb import rstb_field
+        patch['rstb'] = rstb_field(Path(a.rstb))
     re_img = bytearray(stock)
     for a, e in runs: re_img[a:e] = img[a:e]
     assert bytes(head) + b''.join(re_img[s['moff']:s['moff'] + s['size']] for s in pinfo['segs']) == sub6, 'patch does not rebuild subsdk6'
@@ -516,7 +527,10 @@ gc_noop:
         z.writestr(f'{base}/exefs/subsdk6', sub6)
         z.write(mod / 'exefs/main.npdm', f'{base}/exefs/main.npdm')
         for f in sorted((mod / 'romfs').rglob('*')):
-            if f.is_file(): z.write(f, f'{base}/romfs/{f.relative_to(mod / "romfs").as_posix()}')
+            if not f.is_file(): continue
+            rel = f.relative_to(mod / 'romfs').as_posix()
+            if rel == 'qol-enhancements/config/controls.ini': z.writestr(f'{base}/romfs/{rel}', auto_swim_off(f.read_bytes()))
+            else: z.write(f, f'{base}/romfs/{rel}')
         z.writestr(f'atmosphere/exefs_patches/qol-peanuts/{ipsname}', bytes(ips))
     size = (data_end + new_bss + PAGE - 1) & ~(PAGE - 1)
     print(f'subsdk6 at main+{PB:#x}; {n} hooks; {len(far)} far branches; window {len(wpages)} pages ({len(redir)} redirected) in bss at {WIN:#x}; '

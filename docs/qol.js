@@ -74,6 +74,26 @@ const hex = b => Array.from(new Uint8Array(b), x => x.toString(16).padStart(2, '
 const sha256 = async u => hex(await crypto.subtle.digest('SHA-256', u));
 const unb64 = s => Uint8Array.from(atob(s), ch => ch.charCodeAt(0));
 
+// Vanilla 3.0.3's ResourceSizeTable.srsizetable from the patch file (tools/add_rstb.py), or null if the patch has none.
+// The zip has no table: the page makes the size table as its own mod (ACNH RSTB Fixer, docs/rstb), over every mod the player
+// uses, and this is its base. The game refuses a file bigger than its entry, and QoL's layouts are bigger than vanilla's
+// (LBellCounterRT needs 472,256 bytes, vanilla allows 77,952).
+async function baseTable(patch) {
+  if (!patch || !patch.rstb) return null;
+  const t = unb64(patch.rstb.data);
+  if (await sha256(t) !== patch.rstb.sha256) throw new Error('The size table in the patch file came out wrong. Please open an issue.');
+  return t;
+}
+
+// The one setting the port ships differently from the stock mod. With auto_swim on, the character can't swim at the
+// surface after a dive (it turns but doesn't travel), so the zip has it off.
+const CONTROLS = 'romfs/qol-enhancements/config/controls.ini';
+function autoSwimOff(ini) {
+  const text = new TextDecoder().decode(ini);
+  const out = text.replace(/^auto_swim[ \t]*=[ \t]*true\b/m, "# Off in the Peanuts port: when on, you can't swim at the surface after a dive.\nauto_swim = false");
+  return out === text ? ini : new TextEncoder().encode(out);
+}
+
 async function build(modBytes, patch) {
   if (patch.format !== 1 || patch.tid !== TID) throw new Error('That is not the qol-peanuts-patch.json file.');
   const files = await readZip(modBytes);
@@ -103,7 +123,10 @@ async function build(modBytes, patch) {
   if (!npdm) throw new Error('main.npdm is missing from that zip.');
   entries.push([`${out}/exefs/main.npdm`, await npdm()]);
   const romfs = [...files.keys()].filter(n => n.startsWith(base + 'romfs/')).sort();
-  for (const n of romfs) entries.push([`${out}/${n.slice(base.length)}`, await files.get(n)()]);
+  for (const n of romfs) {
+    const rel = n.slice(base.length), data = await files.get(n)();
+    entries.push([`${out}/${rel}`, rel === CONTROLS ? autoSwimOff(data) : data]);
+  }
   entries.push([`atmosphere/exefs_patches/qol-peanuts/${patch.ips_name}`, unb64(patch.ips)]);
   return { zip: writeZip(entries), romfs: romfs.length };
 }
@@ -127,9 +150,12 @@ async function check(modBytes, patch) {
 }
 
 // What the page calls: one zip out.
-const make = async (modBytes, patch) => { const r = await build(modBytes, patch); return { zip: r.zip, note: `${r.romfs} files` }; };
+const make = async (modBytes, patch) => {
+  const r = await build(modBytes, patch);
+  return { zip: r.zip, note: `${r.romfs} files` };
+};
 
-const api = { build, check, make, MEMFIX, memFixZip, writeZip, lz4, readZip };
+const api = { build, check, make, baseTable, MEMFIX, memFixZip, writeZip, lz4, readZip };
 globalThis.QOL = api;
 if (typeof module !== 'undefined') module.exports = api;
 })();
