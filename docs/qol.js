@@ -85,6 +85,15 @@ async function baseTable(patch) {
   return t;
 }
 
+// The one setting the port ships differently from the stock mod. With auto_swim on, the character can't swim at the
+// surface after a dive (it turns but doesn't travel), so the zip has it off.
+const CONTROLS = 'romfs/qol-enhancements/config/controls.ini';
+function autoSwimOff(ini) {
+  const text = new TextDecoder().decode(ini);
+  const out = text.replace(/^auto_swim[ \t]*=[ \t]*true\b/m, "# Off in the Peanuts port: when on, you can't swim at the surface after a dive.\nauto_swim = false");
+  return out === text ? ini : new TextEncoder().encode(out);
+}
+
 async function build(modBytes, patch) {
   if (patch.format !== 1 || patch.tid !== TID) throw new Error('That is not the qol-peanuts-patch.json file.');
   const files = await readZip(modBytes);
@@ -114,7 +123,10 @@ async function build(modBytes, patch) {
   if (!npdm) throw new Error('main.npdm is missing from that zip.');
   entries.push([`${out}/exefs/main.npdm`, await npdm()]);
   const romfs = [...files.keys()].filter(n => n.startsWith(base + 'romfs/')).sort();
-  for (const n of romfs) entries.push([`${out}/${n.slice(base.length)}`, await files.get(n)()]);
+  for (const n of romfs) {
+    const rel = n.slice(base.length), data = await files.get(n)();
+    entries.push([`${out}/${rel}`, rel === CONTROLS ? autoSwimOff(data) : data]);
+  }
   entries.push([`atmosphere/exefs_patches/qol-peanuts/${patch.ips_name}`, unb64(patch.ips)]);
   return { zip: writeZip(entries), romfs: romfs.length };
 }

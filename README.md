@@ -43,6 +43,8 @@ To remove the mod, hit the trash icon next to it and let Peanuts rebuild. If you
 
 These are the same .ini files as the original mod, one per module, in `atmosphere/contents/01006F8002326000/romfs/qol-enhancements/config/` inside the zip. Every option has a comment above it, and `enabled = false` turns a module off. Edit them before you install.
 
+One setting differs: `auto_swim` in `controls.ini` is off. When on, you can't swim at the surface after a dive: your character turns but doesn't move. With it off, the mod leaves swimming to the game, so you lose analog swim speed and timed arm strokes.
+
 ## Size table
 
 The game keeps a table of how much memory each file may use (`romfs/System/Resource/ResourceSizeTable.srsizetable`) and refuses any file bigger than its entry. QoL's 7 layout files are all bigger than their vanilla 3.0.3 entries. `LBellCounterRT` needs 472,256 bytes, and vanilla allows 77,952. Peanuts uses only one table, the first-installed mod's.

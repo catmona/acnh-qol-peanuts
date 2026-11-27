@@ -148,6 +148,11 @@ def decode_branch(w, at):
     return None
 
 
+def auto_swim_off(ini):
+    """docs/qol.js autoSwimOff: with auto_swim on, the character can't swim at the surface after a dive, so the zip has it off"""
+    return re.sub(rb'(?m)^auto_swim[ \t]*=[ \t]*true\b', b"# Off in the Peanuts port: when on, you can't swim at the surface after a dive.\nauto_swim = false", ini, count=1)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--exefs', required=True, help="the game's exefs (main and subsdk0, ACNH 3.0.3): read here, never copied into the repo")
@@ -522,7 +527,10 @@ gc_noop:
         z.writestr(f'{base}/exefs/subsdk6', sub6)
         z.write(mod / 'exefs/main.npdm', f'{base}/exefs/main.npdm')
         for f in sorted((mod / 'romfs').rglob('*')):
-            if f.is_file(): z.write(f, f'{base}/romfs/{f.relative_to(mod / "romfs").as_posix()}')
+            if not f.is_file(): continue
+            rel = f.relative_to(mod / 'romfs').as_posix()
+            if rel == 'qol-enhancements/config/controls.ini': z.writestr(f'{base}/romfs/{rel}', auto_swim_off(f.read_bytes()))
+            else: z.write(f, f'{base}/romfs/{rel}')
         z.writestr(f'atmosphere/exefs_patches/qol-peanuts/{ipsname}', bytes(ips))
     size = (data_end + new_bss + PAGE - 1) & ~(PAGE - 1)
     print(f'subsdk6 at main+{PB:#x}; {n} hooks; {len(far)} far branches; window {len(wpages)} pages ({len(redir)} redirected) in bss at {WIN:#x}; '
