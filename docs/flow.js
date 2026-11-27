@@ -43,10 +43,10 @@ css.textContent = `
   .others .picks .pick { margin: 0; }
   .linkish { background: none; border: 0; padding: 0; margin: 0; width: auto; color: var(--bark-soft); text-decoration: underline; font: inherit; cursor: pointer; }
   .out { list-style: none; counter-reset: o; margin: 10px 0 0; padding: 0; display: grid; gap: 10px; }
-  .out li { counter-increment: o; display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; }
-  .out li::before { content: counter(o); width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+  .out > li { counter-increment: o; display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; }
+  .out > li::before { content: counter(o); width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
                     background: var(--leaf); color: #fff; font: 600 1rem Fredoka, sans-serif; }
-  .out li.more::before { background: var(--bark-soft); }
+  .out > li.more::before { background: var(--bark-soft); }
   .out small { display: block; color: var(--bark-soft); font-weight: 500; }
   .out b { overflow-wrap: anywhere; }
   .out ol.how { margin: 6px 0 0; padding-left: 1.2em; font-size: .92rem; font-weight: 500; }
