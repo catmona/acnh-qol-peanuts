@@ -23,7 +23,7 @@ All of this is Arcusaren's work, I just got it running on Peanuts. If something 
 ## Install
 
 1. Get **Main download (Modded Switch)** from the mod's [GameBanana page](https://gamebanana.com/mods/727637). Don't unzip it.
-   Want [Jubbsticks' Additions](https://github.com/catmona/acnh-jubbsticks-peanuts) too? Also get `UJAP-BetaRelease-V002-Atmosphere.7z` from the [port's Releases](https://github.com/dragonloverlord/Unnofficial-Jubbsticks-Additions-Port/releases) (read the rules in its README first). Don't extract it.
+   Want [Jubbsticks' Additions](https://github.com/catmona/acnh-jubbsticks-peanuts) too? Also get the latest Atmosphere `.7z` from the [port's Releases](https://github.com/dragonloverlord/Unnofficial-Jubbsticks-Additions-Port/releases) (read the rules in its README first). Don't extract it.
 2. Open the [patcher page](https://catmona.github.io/acnh-qol-peanuts/), pick your download(s) and hit **Make my Peanuts zips**. The page lists the zips it made, in install order. The first one is the size table.
    Using other mods that change game files, like ACNH Combined? Add them in the other-mods box too, so the size table covers them (see [Size table](#size-table)). Make the zips again after you change your mods.
 3. In Peanuts, long-press ACNH, then go to **Mods & Cheats > Add > A file** and add each zip in the order the page lists them, then your other mods. If other romfs mods are already installed, remove them first and add them again after: Peanuts uses the first-installed mod's copy of a file and can't reorder.
