@@ -11,7 +11,7 @@ A port of Arcusaren's [Quality of Life Enhancements](https://gamebanana.com/mods
 
 All of this is Arcusaren's work, I just got it running on Peanuts. If something doesn't work, please open an issue!
 
-<img src="docs/img/features/controls.png" alt="Controls: hold Y to skip dialogue up to the next choice, hold Y to keep picking up items, crops and weeds, vault rivers, climb cliffs and swim without extra button presses" width="100%">
+<img src="docs/img/features/controls.png" alt="Controls: hold Y to skip dialogue up to the next choice, hold Y to keep picking up items, crops and weeds, vault rivers and climb cliffs without extra button presses" width="100%">
 <img src="docs/img/features/pockets.png" alt="Pockets: grab 5 or grab 10 from a stack, ZL to drop, ZR to use, hold A to select a bunch of items when selling, Y sends items to your home storage" width="100%">
 <img src="docs/img/features/crafting.png" alt="Crafting: faster crafting and cooking, Y jumps straight to the quantity and 10 wraps back to 1, 3D previews in the DIY app" width="100%">
 <img src="docs/img/features/faster-dialogue.png" alt="Faster Dialogue: text runs faster, optional extra boost for shopkeepers" width="100%">
