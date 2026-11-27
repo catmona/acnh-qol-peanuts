@@ -19,7 +19,7 @@ const MODS = {
   jub: { name: "Jubbsticks' Additions", global: 'JUB', zip: 'jubbsticks-additions-peanuts.zip', engine: '/acnh-jubbsticks-peanuts/engine.js',
          patchLocal: null, patchAbs: null, patchName: null, patchPage: null,   // the Jubbsticks engine needs no patch file
          get: `<b>Jubbsticks' Additions port</b>: on the port's <a href="https://github.com/dragonloverlord/Unnofficial-Jubbsticks-Additions-Port/releases" target="_blank" rel="noopener">Releases page</a>
-               get <code>UJAP-BetaRelease-V002-Atmosphere.7z</code>. Read the rules in its README first, and don't extract the file.`,
+               get the latest Atmosphere <code>.7z</code>. Read the rules in its README first, and don't extract the file.`,
          want: "Want Jubbsticks' Additions too?" },
 };
 const OTHER = SELF === 'qol' ? 'jub' : 'qol', ORDER = ['qol', 'jub'];   // install order, after the size table
