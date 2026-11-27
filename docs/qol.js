@@ -128,7 +128,7 @@ async function build(modBytes, patch) {
     entries.push([`${out}/${rel}`, rel === CONTROLS ? autoSwimOff(data) : data]);
   }
   entries.push([`atmosphere/exefs_patches/qol-peanuts/${patch.ips_name}`, unb64(patch.ips)]);
-  return { zip: writeZip(entries), romfs: romfs.length };
+  return { zip: writeZip(entries), files: entries.length };
 }
 
 
@@ -152,7 +152,7 @@ async function check(modBytes, patch) {
 // What the page calls: one zip out.
 const make = async (modBytes, patch) => {
   const r = await build(modBytes, patch);
-  return { zip: r.zip, note: `${r.romfs} files` };
+  return { zip: r.zip, note: `${r.files} files` };
 };
 
 const api = { build, check, make, baseTable, MEMFIX, memFixZip, writeZip, lz4, readZip };
